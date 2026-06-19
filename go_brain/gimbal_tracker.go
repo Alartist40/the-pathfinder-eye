@@ -34,16 +34,32 @@ func (gt *GimbalTracker) TrackObject(detX, detY, detW, detH, frameW, frameH int)
 	gt.targetPan = 90 + (centerX-frameW/2)*90/frameW
 	gt.targetTilt = 110 + (centerY-frameH/2)*70/frameH
 
-	if gt.targetPan < 30 { gt.targetPan = 30 } else if gt.targetPan > 150 { gt.targetPan = 150 }
-	if gt.targetTilt < 30 { gt.targetTilt = 30 } else if gt.targetTilt > 180 { gt.targetTilt = 180 }
+	if gt.targetPan < 30 {
+		gt.targetPan = 30
+	} else if gt.targetPan > 150 {
+		gt.targetPan = 150
+	}
+	if gt.targetTilt < 30 {
+		gt.targetTilt = 30
+	} else if gt.targetTilt > 180 {
+		gt.targetTilt = 180
+	}
 
 	gt.updateGimbal()
 }
 
 func (gt *GimbalTracker) updateGimbal() {
 	if gt.smooth {
-		if gt.currentPan < gt.targetPan { gt.currentPan += 2 } else if gt.currentPan > gt.targetPan { gt.currentPan -= 2 }
-		if gt.currentTilt < gt.targetTilt { gt.currentTilt += 2 } else if gt.currentTilt > gt.targetTilt { gt.currentTilt -= 2 }
+		if gt.currentPan < gt.targetPan {
+			gt.currentPan += 2
+		} else if gt.currentPan > gt.targetPan {
+			gt.currentPan -= 2
+		}
+		if gt.currentTilt < gt.targetTilt {
+			gt.currentTilt += 2
+		} else if gt.currentTilt > gt.targetTilt {
+			gt.currentTilt -= 2
+		}
 	} else {
 		gt.currentPan = gt.targetPan
 		gt.currentTilt = gt.targetTilt

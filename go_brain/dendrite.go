@@ -49,7 +49,10 @@ type Dendrite struct {
 }
 
 func initDendrite() (*Dendrite, error) {
-	dbPath := "../db/dendrite.sqlite"
+	return initDendritePath("../db/dendrite.sqlite")
+}
+
+func initDendritePath(dbPath string) (*Dendrite, error) {
 	db, err := sql.Open("sqlite3", dbPath+"?_journal=WAL")
 	if err != nil {
 		return nil, err
@@ -239,6 +242,12 @@ func (d *Dendrite) parseTags(content string) []string {
 
 func toNodeID(s string) string {
 	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), " ", "_")
+}
+
+func (d *Dendrite) Close() {
+	if d != nil && d.db != nil {
+		d.db.Close()
+	}
 }
 
 func containsStr(slice []string, item string) bool {

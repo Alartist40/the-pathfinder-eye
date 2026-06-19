@@ -7,11 +7,11 @@ import (
 type AuthorityLevel int
 
 const (
-	LevelGuest         AuthorityLevel = 0
-	LevelScout         AuthorityLevel = 1
-	LevelMasterguide   AuthorityLevel = 2
-	LevelLeader         AuthorityLevel = 3
-	LevelProgrammer    AuthorityLevel = 4 // HIGHEST - Administrator
+	LevelGuest       AuthorityLevel = 0
+	LevelScout       AuthorityLevel = 1
+	LevelMasterguide AuthorityLevel = 2
+	LevelLeader      AuthorityLevel = 3
+	LevelProgrammer  AuthorityLevel = 4 // HIGHEST - Administrator
 )
 
 type AuthorizedFigure struct {
@@ -30,21 +30,21 @@ type AuthorityRank struct {
 }
 
 var allRanks = map[string]AuthorityRank{
-	"programmer": {Name: "Programmer", Level: LevelProgrammer, Color: "#FF0000", Program: "System", Age: "N/A"},
+	"programmer":          {Name: "Programmer", Level: LevelProgrammer, Color: "#FF0000", Program: "System", Age: "N/A"},
 	"master_guide_senior": {Name: "Master Guide Senior", Level: LevelLeader, Color: "#FFD700", Program: "Pathfinder", Age: "22+"},
-	"master_guide": {Name: "Master Guide", Level: LevelLeader, Color: "#FFD700", Program: "Pathfinder", Age: "15+"},
-	"guide": {Name: "Guide", Level: LevelMasterguide, Color: "#FFD700", Program: "Pathfinder", Age: "15-16"},
-	"voyager": {Name: "Voyager", Level: LevelScout, Color: "#800020", Program: "Pathfinder", Age: "14-15"},
-	"ranger": {Name: "Ranger", Level: LevelScout, Color: "#C0C0C0", Program: "Pathfinder", Age: "13-14"},
-	"explorer": {Name: "Explorer", Level: LevelScout, Color: "#00AA00", Program: "Pathfinder", Age: "12-13"},
-	"companion": {Name: "Companion", Level: LevelScout, Color: "#FF0000", Program: "Pathfinder", Age: "11-12"},
-	"friend": {Name: "Friend", Level: LevelScout, Color: "#0000FF", Program: "Pathfinder", Age: "10-11"},
-	"helping_hand": {Name: "Helping Hand", Level: LevelGuest, Color: "#FFA500", Program: "Adventurer", Age: "6-9"},
-	"builder": {Name: "Builder", Level: LevelGuest, Color: "#FFA500", Program: "Adventurer", Age: "6-9"},
-	"sunbeam": {Name: "Sunbeam", Level: LevelGuest, Color: "#FFD700", Program: "Adventurer", Age: "6-9"},
-	"busy_bee": {Name: "Busy Bee", Level: LevelGuest, Color: "#FFD700", Program: "Adventurer", Age: "6-9"},
-	"early_birds": {Name: "Early Birds", Level: LevelGuest, Color: "#87CEEB", Program: "Adventurer", Age: "6-9"},
-	"little_lamb": {Name: "Little Lamb", Level: LevelGuest, Color: "#FFFFFF", Program: "Adventurer", Age: "6-9"},
+	"master_guide":        {Name: "Master Guide", Level: LevelLeader, Color: "#FFD700", Program: "Pathfinder", Age: "15+"},
+	"guide":               {Name: "Guide", Level: LevelMasterguide, Color: "#FFD700", Program: "Pathfinder", Age: "15-16"},
+	"voyager":             {Name: "Voyager", Level: LevelScout, Color: "#800020", Program: "Pathfinder", Age: "14-15"},
+	"ranger":              {Name: "Ranger", Level: LevelScout, Color: "#C0C0C0", Program: "Pathfinder", Age: "13-14"},
+	"explorer":            {Name: "Explorer", Level: LevelScout, Color: "#00AA00", Program: "Pathfinder", Age: "12-13"},
+	"companion":           {Name: "Companion", Level: LevelScout, Color: "#FF0000", Program: "Pathfinder", Age: "11-12"},
+	"friend":              {Name: "Friend", Level: LevelScout, Color: "#0000FF", Program: "Pathfinder", Age: "10-11"},
+	"helping_hand":        {Name: "Helping Hand", Level: LevelGuest, Color: "#FFA500", Program: "Adventurer", Age: "6-9"},
+	"builder":             {Name: "Builder", Level: LevelGuest, Color: "#FFA500", Program: "Adventurer", Age: "6-9"},
+	"sunbeam":             {Name: "Sunbeam", Level: LevelGuest, Color: "#FFD700", Program: "Adventurer", Age: "6-9"},
+	"busy_bee":            {Name: "Busy Bee", Level: LevelGuest, Color: "#FFD700", Program: "Adventurer", Age: "6-9"},
+	"early_birds":         {Name: "Early Birds", Level: LevelGuest, Color: "#87CEEB", Program: "Adventurer", Age: "6-9"},
+	"little_lamb":         {Name: "Little Lamb", Level: LevelGuest, Color: "#FFFFFF", Program: "Adventurer", Age: "6-9"},
 }
 
 type AuthorityManager struct {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -42,6 +43,8 @@ var (
 	cortex          *AICortex
 	birdwatchActive bool
 	startupOnce     sync.Once
+	shutdownCtx     context.Context
+	shutdownCancel  context.CancelFunc
 )
 
 // LED color constants for WS2812 (from original Yahboom library)
@@ -54,17 +57,29 @@ const (
 
 // setLEDAll controls all 10 WS2812 LEDs at once (register 0x03)
 func setLEDAll(state, color byte) error {
-	if state > 1 { state = 1 }
-	if color > 3 { color = 3 }
+	if state > 1 {
+		state = 1
+	}
+	if color > 3 {
+		color = 3
+	}
 	return i2cWrite(0x03, []byte{state, color})
 }
 
 // setLEDAlone controls a single WS2812 LED (register 0x04)
 func setLEDAlone(number, state, color byte) error {
-	if number < 1 { number = 1 }
-	if number > 10 { number = 10 }
-	if state > 1 { state = 1 }
-	if color > 3 { color = 3 }
+	if number < 1 {
+		number = 1
+	}
+	if number > 10 {
+		number = 10
+	}
+	if state > 1 {
+		state = 1
+	}
+	if color > 3 {
+		color = 3
+	}
 	return i2cWrite(0x04, []byte{number, state, color})
 }
 
@@ -78,36 +93,48 @@ func indicateReady() {
 
 func indicateSuccess() {
 	for i := 0; i < 2; i++ {
-		_ = setLEDAll(0, 0); time.Sleep(50 * time.Millisecond)
-		_ = setLEDAll(1, LEDColorGreen); time.Sleep(120 * time.Millisecond)
+		_ = setLEDAll(0, 0)
+		time.Sleep(50 * time.Millisecond)
+		_ = setLEDAll(1, LEDColorGreen)
+		time.Sleep(120 * time.Millisecond)
 	}
 	_ = setLEDAll(0, 0)
 }
 
 func indicateError() {
 	for i := 0; i < 3; i++ {
-		_ = setLEDAll(1, LEDColorRed); time.Sleep(150 * time.Millisecond)
-		_ = setLEDAll(0, 0); time.Sleep(100 * time.Millisecond)
+		_ = setLEDAll(1, LEDColorRed)
+		time.Sleep(150 * time.Millisecond)
+		_ = setLEDAll(0, 0)
+		time.Sleep(100 * time.Millisecond)
 	}
 	_ = setLEDAll(0, 0)
 }
 
 func indicateWarning() {
-	_ = setLEDAll(1, LEDColorYellow); time.Sleep(200 * time.Millisecond); _ = setLEDAll(0, 0)
+	_ = setLEDAll(1, LEDColorYellow)
+	time.Sleep(200 * time.Millisecond)
+	_ = setLEDAll(0, 0)
 }
 
 func indicateProcessing() {
-	_ = setLEDAll(1, LEDColorBlue); time.Sleep(200 * time.Millisecond); _ = setLEDAll(0, 0)
+	_ = setLEDAll(1, LEDColorBlue)
+	time.Sleep(200 * time.Millisecond)
+	_ = setLEDAll(0, 0)
 }
 
 func indicateCommandAck() {
-	_ = setLEDAll(1, LEDColorYellow); time.Sleep(150 * time.Millisecond); _ = setLEDAll(0, 0)
+	_ = setLEDAll(1, LEDColorYellow)
+	time.Sleep(150 * time.Millisecond)
+	_ = setLEDAll(0, 0)
 }
 
 func indicateWakeWord() {
 	for i := 0; i < 2; i++ {
-		_ = setLEDAll(0, 0); time.Sleep(50 * time.Millisecond)
-		_ = setLEDAll(1, LEDColorGreen); time.Sleep(100 * time.Millisecond)
+		_ = setLEDAll(0, 0)
+		time.Sleep(50 * time.Millisecond)
+		_ = setLEDAll(1, LEDColorGreen)
+		time.Sleep(100 * time.Millisecond)
 	}
 	_ = setLEDAll(0, 0)
 }
@@ -117,7 +144,8 @@ func indicateSleep() { _ = setLEDAll(0, 0) }
 func indicateStartup() {
 	colors := []byte{LEDColorRed, LEDColorGreen, LEDColorBlue, LEDColorYellow}
 	for _, c := range colors {
-		_ = setLEDAll(1, c); time.Sleep(200 * time.Millisecond)
+		_ = setLEDAll(1, c)
+		time.Sleep(200 * time.Millisecond)
 	}
 	_ = setLEDAll(0, 0)
 }
@@ -162,9 +190,12 @@ func initLogging() error {
 
 func initI2C() error {
 	f, err := os.OpenFile(I2C_DEVICE, os.O_RDWR, 0600)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), I2C_SLAVE, uintptr(I2C_ADDR)); errno != 0 {
-		f.Close(); return fmt.Errorf("ioctl failed: %v", errno)
+		f.Close()
+		return fmt.Errorf("ioctl failed: %v", errno)
 	}
 	i2cFile = f
 	return nil
@@ -173,15 +204,21 @@ func initI2C() error {
 func i2cWrite(reg byte, data []byte) error {
 	i2cMutex.Lock()
 	defer i2cMutex.Unlock()
-	if i2cFile == nil { return fmt.Errorf("i2c nil") }
+	if i2cFile == nil {
+		return fmt.Errorf("i2c nil")
+	}
 	buf := append([]byte{reg}, data...)
 	_, err := i2cFile.Write(buf)
 	return err
 }
 
 func setServo(id, angle byte) error {
-	if angle > 180 { angle = 180 }
-	if id == 2 && angle > 100 { angle = 100 }
+	if angle > 180 {
+		angle = 180
+	}
+	if id == 2 && angle > 100 {
+		angle = 100
+	}
 	return i2cWrite(0x02, []byte{id, angle})
 }
 
@@ -190,7 +227,9 @@ func moveMotor(id, dir, speed byte) error {
 }
 
 func stopAllMotors() {
-	for i := byte(0); i < 4; i++ { moveMotor(i, 0, 0) }
+	for i := byte(0); i < 4; i++ {
+		moveMotor(i, 0, 0)
+	}
 }
 
 func loadCalibration() *ServoCalibration {
@@ -198,7 +237,9 @@ func loadCalibration() *ServoCalibration {
 	data, err := ioutil.ReadFile(path)
 	if err == nil {
 		var c ServoCalibration
-		if err := json.Unmarshal(data, &c); err == nil { return &c }
+		if err := json.Unmarshal(data, &c); err == nil {
+			return &c
+		}
 	}
 	return &ServoCalibration{
 		Version: "1.0",
@@ -215,13 +256,14 @@ func getSystemStats() map[string]interface{} {
 	temp := strings.TrimPrefix(strings.TrimSuffix(string(outTemp), "\n"), "temp=")
 	return map[string]interface{}{
 		"ram_used": strings.TrimSpace(string(outRAM)) + "MB",
-		"temp": temp,
-		"uptime": time.Since(startTime).String(),
+		"temp":     temp,
+		"uptime":   time.Since(startTime).String(),
 	}
 }
 
 func main() {
 	startTime = time.Now()
+	shutdownCtx, shutdownCancel = context.WithCancel(context.Background())
 	initLogging()
 	initI2C()
 	calibration = loadCalibration()
@@ -230,14 +272,15 @@ func main() {
 	go visionPollerLoop()
 	var err error
 	dendrite, err = initDendrite()
-	if err != nil { log.Fatalf("Failed to init dendrite: %v", err) }
+	if err != nil {
+		log.Fatalf("Failed to init dendrite: %v", err)
+	}
 	authority, _ = initAuthority(dendrite)
 
 	birdDB, _ = initBirdWatchDB("../db/birdwatch.sqlite")
 	tracker = NewBirdTracker()
 	gimbal = NewGimbalTracker()
 
-	// Stick to Ministral as requested for compatibility with Leafcutter
 	modelPath := "../models/Hermes-3-Llama-3.1-8B.Q4_K_M.gguf"
 	aiBrain = newAIBrain(modelPath)
 	executor = &ActionExecutor{dendrite: dendrite}
@@ -245,9 +288,9 @@ func main() {
 	ttsEngine, _ = initTTS()
 	voiceModel := "../models/ggml-tiny.en.bin"
 
+	cortex = newCortex()
 	go func() {
 		_ = initVoice(voiceModel)
-		// go StartWakeWordListener() // DEPRECATED: Handled by unified cortex loop
 		go cortex.StartUnifiedAwareness()
 		go startListeningHeartbeat()
 	}()
@@ -258,7 +301,6 @@ func main() {
 			_ = exec.Command("/home/pi/the-pathfinder-eye_ai/scripts/set_audio.sh").Run()
 			time.Sleep(1 * time.Second)
 			if ttsEngine != nil {
-				// Correct hardware-focused startup sequence
 				_ = ttsEngine.SpeakCritical("Pathfinder Eye online")
 				time.Sleep(500 * time.Millisecond)
 				_ = ttsEngine.SpeakCritical("Motors and servos ready")
@@ -271,22 +313,47 @@ func main() {
 		})
 	}()
 
+	// Graceful shutdown: cancel context on signal, then clean up
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		<-c; stopAllMotors()
-		if i2cFile != nil { i2cFile.Close() }
+		<-c
+		infoLog.Println("SHUTDOWN: signal received, cleaning up...")
+		shutdownCancel()
+		stopAllMotors()
+		if i2cFile != nil {
+			i2cFile.Close()
+		}
+		if ttsEngine != nil {
+			close(ttsQueue)
+		}
+		if visionDB != nil {
+			visionDB.Close()
+		}
+		if dendrite != nil {
+			dendrite.Close()
+		}
+		if birdDB != nil {
+			birdDB.Close()
+		}
+		infoLog.Println("SHUTDOWN: complete")
 		os.Exit(0)
 	}()
 
-	http.HandleFunc("/move", handleMove)
-	http.HandleFunc("/camera", handleCamera)
-	http.HandleFunc("/ai/think", handleAIThink)
-	http.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
-		data, _ := ioutil.ReadFile("/tmp/vision_feed.jpg")
+	http.HandleFunc("/move", authWrap(handleMove))
+	http.HandleFunc("/camera", authWrap(handleCamera))
+	http.HandleFunc("/ai/think", authWrap(handleAIThink))
+	http.HandleFunc("/stream", authWrap(func(w http.ResponseWriter, r *http.Request) {
+		data, err := ioutil.ReadFile("/tmp/vision_feed.jpg")
+		if err != nil || len(data) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"no vision feed","hint":"is camera-feed.service running?"}`))
+			return
+		}
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.Write(data)
-	})
+	}))
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "online", "version": version})
 	})
@@ -298,17 +365,32 @@ func main() {
 func handleAIThink(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	worldCtx := GetWorldStatePrompt()
+
+	route, confidence := ClassifyRoute(q)
+	infoLog.Printf("AI_THINK: route=%s confidence=%.2f query=%q", route, confidence, q)
+
 	speech, _ := aiBrain.Process(q, worldCtx)
-	json.NewEncoder(w).Encode(map[string]string{"speech": speech})
+	json.NewEncoder(w).Encode(map[string]string{
+		"speech":     speech,
+		"route":      route.String(),
+		"confidence": fmt.Sprintf("%.2f", confidence),
+	})
 }
 
 func handleMove(w http.ResponseWriter, r *http.Request) {
 	dir := r.URL.Query().Get("dir")
 	s := byte(150)
 	switch dir {
-	case "forward": for i := byte(0); i < 4; i++ { moveMotor(i, 0, s) }
-	case "backward": for i := byte(0); i < 4; i++ { moveMotor(i, 1, s) }
-	case "stop": stopAllMotors()
+	case "forward":
+		for i := byte(0); i < 4; i++ {
+			moveMotor(i, 0, s)
+		}
+	case "backward":
+		for i := byte(0); i < 4; i++ {
+			moveMotor(i, 1, s)
+		}
+	case "stop":
+		stopAllMotors()
 	}
 }
 
@@ -316,7 +398,11 @@ func handleCamera(w http.ResponseWriter, r *http.Request) {
 	axis := r.URL.Query().Get("axis")
 	val := 0
 	fmt.Sscanf(r.URL.Query().Get("val"), "%d", &val)
-	if axis == "pan" { calibration.Pan.Current += val } else { calibration.Tilt.Current -= val }
+	if axis == "pan" {
+		calibration.Pan.Current += val
+	} else {
+		calibration.Tilt.Current -= val
+	}
 	_ = setServo(1, byte(calibration.Pan.Current))
 	_ = setServo(2, byte(calibration.Tilt.Current))
 }

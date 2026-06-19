@@ -96,6 +96,12 @@ func initBirdWatchDB(dbPath string) (*BirdWatchDB, error) {
 	}, nil
 }
 
+func (bdb *BirdWatchDB) Close() {
+	if bdb != nil && bdb.db != nil {
+		bdb.db.Close()
+	}
+}
+
 func (bdb *BirdWatchDB) RecordSighting(sighting *BirdSighting) error {
 	_, err := bdb.db.Exec(`
     INSERT INTO bird_sightings 

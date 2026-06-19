@@ -15,18 +15,36 @@ import (
 	"github.com/ggerganov/whisper.cpp/bindings/go/pkg/whisper"
 )
 
+// Audio timing constants — enforce THE-PATHFINDER-EYE Absolute Audio
+// Preservation Policy. Any change must come from the project owner.
+//
+//	PER-WAKE-WORD-LISTEN: time the wake-word listener listens before
+//	  deciding "no speech yet" and looping. AUDIO_POLICY.md rule 3.
+//
+//	PER-COMMAND-LISTEN:  time the active-conversation / command-sequence
+//	  listener listens after wake before processing. AUDIO_POLICY.md rule 4.
+//
+//	POST-SPEECH-COOLDOWN: minimum gap between robot finishing speaking
+//	  and the wake listening resuming (anti-feedback). Policy rule 1.
+const (
+	PerWakeWordListenSec  = 3
+	PerCommandListenSec   = 5
+	PostSpeechCooldownSec = 2
+)
+
 type TTSEngine struct {
-	Device         string
-	Speed          float32
-	Volume         int
-	currentTTS     *exec.Cmd
-	isCritical     bool // If true, this speech cannot be interrupted
-	mu             sync.Mutex
+	Device     string
+	Speed      float32
+	Volume     int
+	currentTTS *exec.Cmd
+	isCritical bool // If true, this speech cannot be interrupted
+	mu         sync.Mutex
 }
 
 var (
 	whisperCtx   whisper.Context
 	isVoiceReady bool
+	whisperMu    sync.Mutex
 	ttsEngine    *TTSEngine
 	ttsQueue     chan ttsMessage
 )
@@ -39,11 +57,15 @@ type ttsMessage struct {
 func initVoice(modelPath string) error {
 	infoLog.Printf("VOICE_INIT: Loading model from %s", modelPath)
 	model, err := whisper.New(modelPath)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	ctx, err := model.NewContext()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	_ = ctx.SetLanguage("en")
-        ctx.SetThreads(2)
+	ctx.SetThreads(4)
 	whisperCtx = ctx
 	isVoiceReady = true
 	return nil
@@ -54,7 +76,7 @@ var preferredMicDevice string
 func captureAudio(durationSeconds int) ([]float32, error) {
 	tempFile := "/tmp/capture.wav"
 	devices := []string{"plughw:0,0", "plughw:1,0", "plughw:0,0", "default"}
-	
+
 	if preferredMicDevice != "" {
 		devices = append([]string{preferredMicDevice}, devices...)
 	}
@@ -63,7 +85,7 @@ func captureAudio(durationSeconds int) ([]float32, error) {
 		_ = os.Remove(tempFile)
 		cmd := exec.Command("arecord", "-D", dev, "-d", fmt.Sprintf("%d", durationSeconds),
 			"-f", "S16_LE", "-r", "16000", "-c", "1", tempFile)
-		
+
 		if err := cmd.Run(); err == nil {
 			if fi, err := os.Stat(tempFile); err == nil && fi.Size() > 1024 {
 				preferredMicDevice = dev
@@ -76,7 +98,9 @@ func captureAudio(durationSeconds int) ([]float32, error) {
 
 func readWavSamples(tempFile string) ([]float32, error) {
 	data, err := ioutil.ReadFile(tempFile)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	samples := make([]float32, (len(data)-44)/2)
 	for i := 0; i < len(samples); i++ {
 		val := int16(data[44+i*2]) | int16(data[44+i*2+1])<<8
@@ -86,33 +110,49 @@ func readWavSamples(tempFile string) ([]float32, error) {
 }
 
 func transcribeAudio(samples []float32) (string, error) {
-	if !isVoiceReady { return "", fmt.Errorf("deaf") }
+	if !isVoiceReady {
+		return "", fmt.Errorf("deaf")
+	}
+	whisperMu.Lock()
+	defer whisperMu.Unlock()
+	whisperCtx.SetTranslate(false)
+	_ = whisperCtx.SetLanguage("en")
 	_ = whisperCtx.Process(samples, nil, nil, nil)
 	var res string
 	for {
 		s, err := whisperCtx.NextSegment()
-		if err != nil { break }
+		if err != nil {
+			break
+		}
 		res += s.Text
 	}
 	return res, nil
 }
 
 func translateJapaneseToEnglish(samples []float32) (string, error) {
-    if !isVoiceReady { return "", fmt.Errorf("deaf") }
-    whisperCtx.SetTranslate(true) 
-    _ = whisperCtx.SetLanguage("ja") 
-    if err := whisperCtx.Process(samples, nil, nil, nil); err != nil { return "", err }
-    var res string
-    for {
-        s, err := whisperCtx.NextSegment()
-        if err != nil { break }
-        res += s.Text
-    }
-    return res, nil
+	if !isVoiceReady {
+		return "", fmt.Errorf("deaf")
+	}
+	whisperMu.Lock()
+	defer whisperMu.Unlock()
+	whisperCtx.SetTranslate(true)
+	_ = whisperCtx.SetLanguage("ja")
+	if err := whisperCtx.Process(samples, nil, nil, nil); err != nil {
+		return "", err
+	}
+	var res string
+	for {
+		s, err := whisperCtx.NextSegment()
+		if err != nil {
+			break
+		}
+		res += s.Text
+	}
+	return res, nil
 }
 
 func initTTS() (*TTSEngine, error) {
-	engine := &TTSEngine{ Device: "plughw:0,0", Speed: 1.0, Volume: 170 }
+	engine := &TTSEngine{Device: "plughw:0,0", Speed: 1.0, Volume: 170}
 	ttsQueue = make(chan ttsMessage, 10)
 	go ttsWorker(engine)
 	return engine, nil
@@ -125,7 +165,9 @@ func ttsWorker(t *TTSEngine) {
 }
 
 func (t *TTSEngine) executeSpeak(text string, critical bool) error {
-	if text == "" { return nil }
+	if text == "" {
+		return nil
+	}
 
 	// Only kill if the CURRENT speech is NOT critical
 	t.mu.Lock()
@@ -134,7 +176,10 @@ func (t *TTSEngine) executeSpeak(text string, critical bool) error {
 		// Wait for critical speech to finish naturally
 		for {
 			t.mu.Lock()
-			if !t.isCritical { t.mu.Unlock(); break }
+			if !t.isCritical {
+				t.mu.Unlock()
+				break
+			}
 			t.mu.Unlock()
 			runtime.Gosched()
 		}
@@ -148,13 +193,15 @@ func (t *TTSEngine) executeSpeak(text string, critical bool) error {
 	t.mu.Unlock()
 
 	wavPath := "/tmp/speech.wav"
-	cmd := exec.Command("/home/pi/piper/piper/piper", 
-		"--model", "/home/pi/piper/en_US-lessac-medium.onnx", 
+	cmd := exec.Command("/home/pi/piper/piper/piper",
+		"--model", "/home/pi/piper/en_US-kathleen-low.onnx",
 		"--output_file", wavPath,
 	)
 	stdin, _ := cmd.StdinPipe()
 	go func() { defer stdin.Close(); stdin.Write([]byte(text)) }()
-	if err := cmd.Run(); err != nil { return err }
+	if err := cmd.Run(); err != nil {
+		return err
+	}
 
 	playCmd := exec.Command("aplay", "-D", t.Device, wavPath)
 	t.mu.Lock()
@@ -172,19 +219,25 @@ func (t *TTSEngine) executeSpeak(text string, critical bool) error {
 }
 
 func (t *TTSEngine) Speak(text string) error {
-	if t == nil { return nil }
+	if t == nil {
+		return nil
+	}
 	ttsQueue <- ttsMessage{text: text, critical: false}
 	return nil
 }
 
 func (t *TTSEngine) SpeakCritical(text string) error {
-	if t == nil { return nil }
+	if t == nil {
+		return nil
+	}
 	ttsQueue <- ttsMessage{text: text, critical: true}
 	return nil
 }
 
 func killTTS() {
-	if ttsEngine == nil { return }
+	if ttsEngine == nil {
+		return
+	}
 	ttsEngine.mu.Lock()
 	// Never kill if it's marked critical (feedback like "Yes" or "Understood")
 	if ttsEngine.isCritical {
@@ -201,11 +254,15 @@ func killTTS() {
 }
 
 func speak(text string) error {
-	if ttsEngine == nil { return nil }
+	if ttsEngine == nil {
+		return nil
+	}
 	return ttsEngine.Speak(text)
 }
 
 func speakCritical(text string) error {
-	if ttsEngine == nil { return nil }
+	if ttsEngine == nil {
+		return nil
+	}
 	return ttsEngine.SpeakCritical(text)
 }

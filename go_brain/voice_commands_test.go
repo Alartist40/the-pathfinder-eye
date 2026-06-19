@@ -9,22 +9,22 @@ import (
 // TEST 1: Command String Matching (Fixed)
 func TestVoiceCommandStringMatching(t *testing.T) {
 	testCases := []struct {
-		cmd        string
-		target     string
+		cmd         string
+		target      string
 		shouldMatch bool
 	}{
 		{"move forward", "move forward", true},
 		{"move forward now", "move forward", true},
-		{"can we move forward", "move forward", false}, 
+		{"can we move forward", "move forward", false},
 	}
-	
+
 	for _, tc := range testCases {
 		matches := strings.HasPrefix(tc.cmd, tc.target)
 		if matches != tc.shouldMatch {
 			t.Errorf("Command '%s': expected %v, got %v", tc.cmd, tc.shouldMatch, matches)
 		}
 	}
-	
+
 	t.Log("✅ TEST PASSED: Voice command string matching works correctly")
 }
 
@@ -32,7 +32,7 @@ func TestVoiceCommandStringMatching(t *testing.T) {
 func TestVoiceCommandParameterExtraction(t *testing.T) {
 	// Tilt angle extraction
 	tiltRegex := regexp.MustCompile(`eye tilt (\d+)`)
-	
+
 	testCases := []struct {
 		cmd      string
 		expected string
@@ -40,9 +40,9 @@ func TestVoiceCommandParameterExtraction(t *testing.T) {
 		{"eye tilt 45", "45"},
 		{"eye tilt 90", "90"},
 		{"eye tilt 180", "180"},
-		{"eye rotate 45", ""},  // Should not match
+		{"eye rotate 45", ""}, // Should not match
 	}
-	
+
 	for _, tc := range testCases {
 		match := tiltRegex.FindStringSubmatch(tc.cmd)
 		var result string
@@ -53,7 +53,7 @@ func TestVoiceCommandParameterExtraction(t *testing.T) {
 			t.Errorf("Command '%s': expected '%s', got '%s'", tc.cmd, tc.expected, result)
 		}
 	}
-	
+
 	t.Log("✅ TEST PASSED: Parameter extraction works correctly")
 }
 
@@ -68,16 +68,16 @@ func TestVoiceCommandMovementParsing(t *testing.T) {
 		"rotate right",
 		"about turn",
 	}
-	
+
 	for _, cmd := range commands {
 		cmd = strings.ToLower(cmd)
-		
+
 		// All should be recognized
 		if !strings.HasPrefix(cmd, "move") && !strings.HasPrefix(cmd, "rotate") && cmd != "about turn" {
 			t.Errorf("Command not recognized: %s", cmd)
 		}
 	}
-	
+
 	t.Log("✅ TEST PASSED: Movement command parsing works correctly")
 }
 
@@ -91,14 +91,17 @@ func TestVoiceWakeWordDetection(t *testing.T) {
 		{"Instruction", true},
 		{"INSTRUCTION", true},
 		{"hey instruction", true},
-		{"instructional", true}, 
+		{"please instruction", true},
+		{"destruction", true},
+		{"instructional", false},
+		{"introduction", false},
+		{"direction", false},
 		{"listen", false},
 		{"hello", false},
-		{"please instruction", true},
 	}
 	
 	for _, tc := range testCases {
-		triggers := strings.Contains(strings.ToLower(tc.input), "instruction")
+		triggers := isWakeWord(tc.input)
 		if triggers != tc.shouldTrigger {
 			t.Errorf("Input '%s': expected %v, got %v", tc.input, tc.shouldTrigger, triggers)
 		}
@@ -110,10 +113,10 @@ func TestVoiceWakeWordDetection(t *testing.T) {
 // TEST 5: Registration Command Parsing
 func TestVoiceRegistrationCommandParsing(t *testing.T) {
 	regRegex := regexp.MustCompile(`register new (leader|masterguide) ([a-z\s]+)`)
-	
+
 	testCases := []struct {
-		cmd       string
-		shouldMatch bool
+		cmd          string
+		shouldMatch  bool
 		expectedRole string
 		expectedName string
 	}{
@@ -122,7 +125,7 @@ func TestVoiceRegistrationCommandParsing(t *testing.T) {
 		{"register new scout alex", false, "", ""},
 		{"register john smith", false, "", ""},
 	}
-	
+
 	for _, tc := range testCases {
 		match := regRegex.FindStringSubmatch(strings.ToLower(tc.cmd))
 		if len(match) > 1 && tc.shouldMatch {
@@ -134,7 +137,7 @@ func TestVoiceRegistrationCommandParsing(t *testing.T) {
 			t.Errorf("Command '%s': expected match=%v, got match=%v", tc.cmd, tc.shouldMatch, len(match) > 1)
 		}
 	}
-	
+
 	t.Log("✅ TEST PASSED: Registration command parsing works correctly")
 }
 
@@ -144,12 +147,12 @@ func TestVoiceResourceCommandMapping(t *testing.T) {
 		"adventurer song": "Adventurer Song.mp3",
 		"pathfinder song": "Pathfinder Song.mp3",
 	}
-	
+
 	for trigger := range mediaCommands {
 		if trigger == "" {
 			t.Errorf("Empty trigger in media commands")
 		}
 	}
-	
+
 	t.Log("✅ TEST PASSED: Resource command mapping works correctly")
 }

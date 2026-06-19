@@ -1,0 +1,19 @@
+[Unit]
+Description=LeafcutterLLM Rust FFI Server
+Documentation=https://github.com/Alartist40/LeafcutterLLM
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/LeafcutterLLM/rust
+ExecStart=/home/pi/LeafcutterLLM/rust/target/release/leafcutter server --model /home/pi/the-pathfinder-eye_ai/models/Qwen3.5-9B-IQ4_NL.gguf --port 8081
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/home/pi/the-pathfinder-eye_ai/logs/leafcutter.log
+StandardError=append:/home/pi/the-pathfinder-eye_ai/logs/leafcutter.log
+Environment="PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="LD_LIBRARY_PATH=/home/pi/llama.cpp/build/bin"
+
+[Install]
+WantedBy=multi-user.target

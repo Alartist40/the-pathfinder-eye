@@ -1,8 +1,8 @@
 package main
 
 import (
-	"testing"
 	"os"
+	"testing"
 )
 
 func TestBirdDetection(t *testing.T) {
@@ -19,10 +19,10 @@ func TestBirdDetection(t *testing.T) {
 func TestBirdTracking(t *testing.T) {
 	tracker := NewBirdTracker()
 	bdb := &BirdWatchDB{activeTracks: make(map[int64]*BirdTrack)}
-	
+
 	det1 := []Detection{{X: 100, Y: 150, W: 50, H: 60, Species: "robin", Confidence: 0.95}}
 	tracks := tracker.UpdateTracks(det1, bdb)
-	
+
 	if len(tracks) != 1 {
 		t.Errorf("Expected 1 track, got %d", len(tracks))
 	}
@@ -33,7 +33,7 @@ func TestGimbalTracking(t *testing.T) {
 	gt := NewGimbalTracker()
 	gt.TrackObject(300, 200, 50, 60, 640, 480)
 	pan, tilt := gt.GetCurrentPosition()
-	
+
 	if pan < 0 || pan > 180 || tilt < 0 || tilt > 180 {
 		t.Errorf("Gimbal out of bounds: pan=%d, tilt=%d", pan, tilt)
 	}
@@ -47,7 +47,7 @@ func TestBirdDatabase(t *testing.T) {
 		t.Fatalf("Failed to init: %v", err)
 	}
 	defer bdb.db.Close()
-	
+
 	sighting := &BirdSighting{
 		ID: "test1", Species: "robin", Confidence: 0.95,
 	}

@@ -104,48 +104,84 @@ func initHardwareTools() *ToolRegistry {
 			Direction string `json:"direction"`
 			Speed     int    `json:"speed"`
 		}
-		if err := json.Unmarshal(args, &a); err != nil { return "", err }
-		if a.Speed == 0 { a.Speed = 150 }
-		
+		if err := json.Unmarshal(args, &a); err != nil {
+			return "", err
+		}
+		if a.Speed == 0 {
+			a.Speed = 150
+		}
+
 		switch a.Direction {
-		case "forward": for i := byte(0); i < 4; i++ { moveMotor(i, 0, byte(a.Speed)) }
-		case "backward": for i := byte(0); i < 4; i++ { moveMotor(i, 1, byte(a.Speed)) }
-		case "stop": stopAllMotors()
+		case "forward":
+			for i := byte(0); i < 4; i++ {
+				moveMotor(i, 0, byte(a.Speed))
+			}
+		case "backward":
+			for i := byte(0); i < 4; i++ {
+				moveMotor(i, 1, byte(a.Speed))
+			}
+		case "stop":
+			stopAllMotors()
 		}
 		return fmt.Sprintf("Moved %s at speed %d", a.Direction, a.Speed), nil
 	})
 
 	r.Register("look", func(args json.RawMessage) (string, error) {
-		var a struct { Target string `json:"target"` }
-		if err := json.Unmarshal(args, &a); err != nil { return "", err }
+		var a struct {
+			Target string `json:"target"`
+		}
+		if err := json.Unmarshal(args, &a); err != nil {
+			return "", err
+		}
 		switch a.Target {
-		case "up": _ = setServo(2, 170)
-		case "down": _ = setServo(2, 30)
-		case "left": _ = setServo(1, 150)
-		case "right": _ = setServo(1, 30)
-		case "center": _ = setServo(1, 90); _ = setServo(2, 75)
+		case "up":
+			_ = setServo(2, 170)
+		case "down":
+			_ = setServo(2, 30)
+		case "left":
+			_ = setServo(1, 150)
+		case "right":
+			_ = setServo(1, 30)
+		case "center":
+			_ = setServo(1, 90)
+			_ = setServo(2, 75)
 		}
 		return fmt.Sprintf("Adjusted camera to %s", a.Target), nil
 	})
 
 	r.Register("light", func(args json.RawMessage) (string, error) {
-		var a struct { Color string `json:"color"` }
-		if err := json.Unmarshal(args, &a); err != nil { return "", err }
+		var a struct {
+			Color string `json:"color"`
+		}
+		if err := json.Unmarshal(args, &a); err != nil {
+			return "", err
+		}
 		switch a.Color {
-		case "red": _ = setLEDAll(1, LEDColorRed)
-		case "green": _ = setLEDAll(1, LEDColorGreen)
-		case "blue": _ = setLEDAll(1, LEDColorBlue)
-		case "yellow": _ = setLEDAll(1, LEDColorYellow)
-		case "off": _ = setLEDAll(0, 0)
+		case "red":
+			_ = setLEDAll(1, LEDColorRed)
+		case "green":
+			_ = setLEDAll(1, LEDColorGreen)
+		case "blue":
+			_ = setLEDAll(1, LEDColorBlue)
+		case "yellow":
+			_ = setLEDAll(1, LEDColorYellow)
+		case "off":
+			_ = setLEDAll(0, 0)
 		}
 		return fmt.Sprintf("Set light to %s", a.Color), nil
 	})
 
 	r.Register("play_resource", func(args json.RawMessage) (string, error) {
-		var a struct { Resource string `json:"resource"` }
-		if err := json.Unmarshal(args, &a); err != nil { return "", err }
+		var a struct {
+			Resource string `json:"resource"`
+		}
+		if err := json.Unmarshal(args, &a); err != nil {
+			return "", err
+		}
 		file := "Pathfinder Song.mp3"
-		if strings.Contains(a.Resource, "adventurer") { file = "Adventurer Song.mp3" }
+		if strings.Contains(a.Resource, "adventurer") {
+			file = "Adventurer Song.mp3"
+		}
 		go func() {
 			_ = exec.Command("mpg123", "/home/pi/the-pathfinder-eye_ai/resources/"+file).Run()
 		}()
@@ -153,17 +189,27 @@ func initHardwareTools() *ToolRegistry {
 	})
 
 	r.Register("read_document", func(args json.RawMessage) (string, error) {
-		var a struct { Document string `json:"document"` }
-		if err := json.Unmarshal(args, &a); err != nil { return "", err }
-		
+		var a struct {
+			Document string `json:"document"`
+		}
+		if err := json.Unmarshal(args, &a); err != nil {
+			return "", err
+		}
+
 		path := "/home/pi/the-pathfinder-eye_ai/resources/"
 		switch a.Document {
-		case "pathfinder_law": path += "Pathfinder Law.md"
-		case "pathfinder_pledge": path += "Pathfinder Pledge.md"
-		case "pathfinder_aim": path += "Pathfinder Aim.md"
-		case "pathfinder_motto": path += "Pathfinder Motto.md"
-		case "adventurer_law": path += "Adventurer Law.md"
-		case "adventurer_pledge": path += "Adventurer Pledge.md"
+		case "pathfinder_law":
+			path += "Pathfinder Law.md"
+		case "pathfinder_pledge":
+			path += "Pathfinder Pledge.md"
+		case "pathfinder_aim":
+			path += "Pathfinder Aim.md"
+		case "pathfinder_motto":
+			path += "Pathfinder Motto.md"
+		case "adventurer_law":
+			path += "Adventurer Law.md"
+		case "adventurer_pledge":
+			path += "Adventurer Pledge.md"
 		}
 		go readDocument(path)
 		return "Reading " + a.Document, nil

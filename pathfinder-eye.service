@@ -1,0 +1,25 @@
+[Unit]
+Description=THE-PATHFINDER-EYE Master Brain
+Documentation=https://github.com/Alartist40/the-pathfinder-eye
+After=network.target leafcutter.service sound.target
+Wants=leafcutter.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/the-pathfinder-eye_ai/go_brain
+ExecStart=/home/pi/the-pathfinder-eye_ai/brain
+Restart=on-failure
+RestartSec=3
+StandardOutput=append:/home/pi/the-pathfinder-eye_ai/logs/go_brain.log
+StandardError=append:/home/pi/the-pathfinder-eye_ai/logs/go_brain.log
+Environment="PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="GOMAXPROCS=4"
+
+# Security hardening (optional — remove if it causes issues)
+NoNewPrivileges=false
+ProtectSystem=false
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target

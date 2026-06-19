@@ -7,7 +7,8 @@ import (
 
 func setupTestAuthority(t *testing.T) (*Dendrite, *AuthorityManager) {
 	os.Remove("/tmp/test_authority.sqlite")
-	d, _ := initDendrite()
+	os.Remove("/tmp/test_authority.sqlite-wal")
+	d, _ := initDendritePath("/tmp/test_authority.sqlite")
 	am, err := initAuthority(d)
 	if err != nil {
 		t.Fatalf("Failed to initialize Authority: %v", err)
@@ -18,6 +19,7 @@ func setupTestAuthority(t *testing.T) (*Dendrite, *AuthorityManager) {
 func teardownTestAuthority(d *Dendrite) {
 	d.db.Close()
 	os.Remove("/tmp/test_authority.sqlite")
+	os.Remove("/tmp/test_authority.sqlite-wal")
 }
 
 // TEST 1: Authority Levels Are Distinct
@@ -35,21 +37,21 @@ func TestAuthorityLevels(t *testing.T) {
 func TestAuthorityCommandBlocking(t *testing.T) {
 	d, am := setupTestAuthority(t)
 	defer teardownTestAuthority(d)
-	
+
 	restrictedCommands := []string{"sleep", "calibrate", "delete", "shutdown"}
-	
+
 	for _, cmd := range restrictedCommands {
 		// Scout (Level 1) should NOT be able to execute
 		if am.CanExecuteCommand(LevelScout, cmd) {
 			t.Errorf("Scout should not be able to execute: %s", cmd)
 		}
-		
+
 		// Leader (Level 3) SHOULD be able to execute
 		if !am.CanExecuteCommand(LevelLeader, cmd) {
 			t.Errorf("Leader should be able to execute: %s", cmd)
 		}
 	}
-	
+
 	t.Log("✅ TEST PASSED: Command blocking works correctly")
 }
 
@@ -57,10 +59,10 @@ func TestAuthorityCommandBlocking(t *testing.T) {
 func TestAuthorityFaceVerification(t *testing.T) {
 	d, am := setupTestAuthority(t)
 	defer teardownTestAuthority(d)
-	
+
 	// Register a leader in Dendrite
 	d.Upsert("john_smith", "John Smith", "[[Leader]] at camp", NodeTypePerson, []string{"authority", "leader"})
-	
+
 	// Verify face (should be recognized as leader)
 	figure, ok := am.VerifyFigure("john_smith")
 	if !ok {
@@ -69,13 +71,13 @@ func TestAuthorityFaceVerification(t *testing.T) {
 	if figure.Level != LevelLeader {
 		t.Errorf("Expected LevelLeader, got %d", figure.Level)
 	}
-	
+
 	// Verify unknown face (should fail)
 	_, ok = am.VerifyFigure("unknown_person")
 	if ok {
 		t.Fatal("Should not verify unknown face")
 	}
-	
+
 	t.Log("✅ TEST PASSED: Face verification works correctly")
 }
 
@@ -83,15 +85,15 @@ func TestAuthorityFaceVerification(t *testing.T) {
 func TestAuthorityRegularCommands(t *testing.T) {
 	d, am := setupTestAuthority(t)
 	defer teardownTestAuthority(d)
-	
+
 	regularCommands := []string{"move forward", "tell me a joke", "what time is it"}
-	
+
 	for _, cmd := range regularCommands {
 		// Even guests should be able to execute regular commands
 		if !am.CanExecuteCommand(LevelGuest, cmd) {
 			t.Errorf("Guest should be able to execute: %s", cmd)
 		}
 	}
-	
+
 	t.Log("✅ TEST PASSED: Regular commands work for all levels")
 }

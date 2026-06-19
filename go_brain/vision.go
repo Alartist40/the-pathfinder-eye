@@ -1,15 +1,19 @@
 /**
- * THE-PATHFINDER-EYE : Vision Fusion Module (v3.0 - Textual Awareness)
+ * THE-PATHFINDER-EYE : Vision Fusion Module (v3.1 - Textual Awareness + DB-backed)
  */
 
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"strings"
 	"sync"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type Detection struct {
@@ -64,10 +68,12 @@ func visionPollerLoop() {
 
 		for _, d := range frame.Detections {
 			objects = append(objects, d.ClassName)
-			
-			if d.ClassName == "face" {
+
+			if d.ClassName == "face" || strings.HasPrefix(d.ClassName, "face:") {
 				faceDetectedThisFrame = true
-				if visionDB != nil { _ = visionDB.storeDetection(d, frame.Timestamp) }
+				if visionDB != nil {
+					_ = visionDB.storeDetection(d, frame.Timestamp)
+				}
 			}
 
 			if birdwatchActive && (d.ClassName == "bird" || d.ClassName == "animal") {
@@ -90,41 +96,107 @@ func visionPollerLoop() {
 	}
 }
 
-var seekDirectionPan int = 15
-var seekDirectionTilt int = 10
-var seekPan int = 90
-var seekTilt int = 75
+// seekGimbal state is protected by seekMu
+var (
+	seekMu            sync.Mutex
+	seekDirectionPan  int = 15
+	seekDirectionTilt int = 10
+	seekPan           int = 90
+	seekTilt          int = 75
+)
 
 func seekGimbal() {
-    seekPan += seekDirectionPan
-    if seekPan > 150 {
-        seekDirectionPan = -15
-        seekTilt += seekDirectionTilt
-        if seekTilt > 130 { seekDirectionTilt = -10 } else if seekTilt < 30 { seekDirectionTilt = 10 }
-    } else if seekPan < 30 {
-        seekDirectionPan = 15
-        seekTilt += seekDirectionTilt
-        if seekTilt > 130 { seekDirectionTilt = -10 } else if seekTilt < 30 { seekDirectionTilt = 10 }
-    }
-    _ = setServo(1, byte(seekPan))
-    _ = setServo(2, byte(seekTilt))
+	seekMu.Lock()
+	defer seekMu.Unlock()
+
+	seekPan += seekDirectionPan
+	if seekPan > 150 {
+		seekDirectionPan = -15
+		seekTilt += seekDirectionTilt
+		if seekTilt > 130 {
+			seekDirectionTilt = -10
+		} else if seekTilt < 30 {
+			seekDirectionTilt = 10
+		}
+	} else if seekPan < 30 {
+		seekDirectionPan = 15
+		seekTilt += seekDirectionTilt
+		if seekTilt > 130 {
+			seekDirectionTilt = -10
+		} else if seekTilt < 30 {
+			seekDirectionTilt = 10
+		}
+	}
+	_ = setServo(1, byte(seekPan))
+	_ = setServo(2, byte(seekTilt))
 }
 
 func GetWorldStatePrompt() string {
 	currentState.mu.Lock()
 	defer currentState.mu.Unlock()
-	
-	state := fmt.Sprintf("Objects in view: %v. Face Visible: %v. Bird Visible: %v.", 
+
+	state := fmt.Sprintf("Objects in view: %v. Face Visible: %v. Bird Visible: %v.",
 		currentState.SeenObjects, currentState.FaceVisible, currentState.BirdVisible)
 	return state
 }
 
 func initVisionDB() (*VisionDB, error) {
-    return &VisionDB{}, nil
+	dbPath := "../db/vision.sqlite"
+	db, err := sql.Open("sqlite3", dbPath+"?_journal=WAL")
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS face_detections (
+		id INTEGER PRIMARY KEY,
+		face_id TEXT,
+		person_name TEXT,
+		x INTEGER, y INTEGER, w INTEGER, h INTEGER,
+		detected_at TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_faces_recent ON face_detections(created_at DESC);
+	`)
+	if err != nil {
+		return nil, err
+	}
+	return &VisionDB{db: db}, nil
 }
 
-type VisionDB struct{}
-func (db *VisionDB) storeDetection(d Detection, ts string) error { return nil }
-func (db *VisionDB) GetCurrentSpeaker() (struct{ FaceID string }, error) { 
-	return struct{ FaceID string }{FaceID: "unknown"}, nil 
+type VisionDB struct {
+	db *sql.DB
+}
+
+func (db *VisionDB) storeDetection(d Detection, ts string) error {
+	personName := ""
+	faceID := d.ClassName
+	if strings.HasPrefix(d.ClassName, "face:") {
+		personName = strings.TrimPrefix(d.ClassName, "face:")
+		faceID = "face"
+	}
+	_, err := db.db.Exec(
+		"INSERT INTO face_detections (face_id, person_name, x, y, w, h, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		faceID, personName, d.X, d.Y, d.W, d.H, ts,
+	)
+	return err
+}
+
+func (db *VisionDB) GetCurrentSpeaker() (struct{ FaceID string }, error) {
+	if db == nil || db.db == nil {
+		return struct{ FaceID string }{FaceID: "unknown"}, nil
+	}
+	var personName string
+	err := db.db.QueryRow(
+		"SELECT COALESCE(person_name, 'unknown') FROM face_detections ORDER BY created_at DESC LIMIT 1",
+	).Scan(&personName)
+	if err != nil {
+		return struct{ FaceID string }{FaceID: "unknown"}, nil
+	}
+	return struct{ FaceID string }{FaceID: personName}, nil
+}
+
+func (db *VisionDB) Close() {
+	if db != nil && db.db != nil {
+		db.db.Close()
+	}
 }

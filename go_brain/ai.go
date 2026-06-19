@@ -59,12 +59,15 @@ func (a *AIBrain) Process(userInput string, worldContext string) (string, error)
 	if os.Getenv("CLOUD_API_ENABLED") == "true" {
 		url := os.Getenv("CLOUD_API_URL")
 		apiKey := os.Getenv("CLOUD_API_KEY")
-		
+
 		lowInput := strings.ToLower(userInput)
 		visionKeywords := []string{"see", "look at", "describe", "what is this", "scan"}
 		needsVision := false
 		for _, kw := range visionKeywords {
-			if strings.Contains(lowInput, kw) { needsVision = true; break }
+			if strings.Contains(lowInput, kw) {
+				needsVision = true
+				break
+			}
 		}
 
 		model := os.Getenv("CLOUD_MODEL_NAME")
@@ -87,6 +90,10 @@ func (a *AIBrain) Process(userInput string, worldContext string) (string, error)
 			return res, nil
 		}
 		errorLog.Printf("AI_ROUTER: Cloud failed: %v", err)
+		// Above `err` may carry HTTP body or auth header echo. The redact
+		// pass would catch a sk-… bearer, but log lines are unwrapped so
+		// we re-redact here before it lands in the journal.
+		safeLogf("ERROR", "AI_ROUTER: Cloud failed: %s", redactOnce(err.Error()))
 	}
 
 	infoLog.Println("AI_ROUTER: Falling back to local intelligence...")
@@ -143,6 +150,7 @@ func (a *AIBrain) iterateAgent(messages []map[string]interface{}, url, apiKey, m
 	}
 
 	finalSpeech := ""
+	prevSpoken := ""
 	for iter := 0; iter < 3; iter++ {
 		payload := map[string]interface{}{
 			"model":       model,
@@ -152,18 +160,31 @@ func (a *AIBrain) iterateAgent(messages []map[string]interface{}, url, apiKey, m
 		}
 
 		jsonData, _ := json.Marshal(payload)
+		prevSpoken = finalSpeech
+
 		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-		if err != nil { return "", err }
+		if err != nil {
+			return "", err
+		}
 		req.Header.Set("Content-Type", "application/json")
-		if apiKey != "" { req.Header.Set("Authorization", "Bearer " + apiKey) }
+		if apiKey != "" {
+			req.Header.Set("Authorization", "Bearer "+apiKey)
+		}
 
 		resp, err := a.Client.Do(req)
-		if err != nil { return "", fmt.Errorf("connection failed") }
-		
+		if err != nil {
+			return "", fmt.Errorf("connection failed")
+		}
+
 		body, _ := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 
 		if resp.StatusCode != 200 {
+			// Capture the response body for the log so an HTTP failure
+			// hints at the upstream reason. Redact first — the body
+			// may contain echoes of the API key or bearer header.
+			safeLogf("ERROR", "AI_ROUTER: API %d: %s",
+				resp.StatusCode, redactOnce(string(body)))
 			return "", fmt.Errorf("API %d: %s", resp.StatusCode, string(body))
 		}
 
@@ -175,17 +196,27 @@ func (a *AIBrain) iterateAgent(messages []map[string]interface{}, url, apiKey, m
 				} `json:"message"`
 			} `json:"choices"`
 		}
-		if err := json.Unmarshal(body, &chatResponse); err != nil { return "", fmt.Errorf("json error") }
-		if len(chatResponse.Choices) == 0 { break }
-		
+		if err := json.Unmarshal(body, &chatResponse); err != nil {
+			return "", fmt.Errorf("json error")
+		}
+		if len(chatResponse.Choices) == 0 {
+			break
+		}
+
 		aiMsg := chatResponse.Choices[0].Message
 		cleaned := a.cleanAIGarbage(aiMsg.Content)
+		// Track the latest *cleaned* assistant content. We don't
+		// concatenate across iterations because the brain and the
+		// TTS pipeline want the final answer, not the entire
+		// multi-turn trace.
 		if cleaned != "" {
-			finalSpeech += cleaned + " "
+			finalSpeech = cleaned
 			_ = speak(cleaned)
 		}
 
-		if len(aiMsg.ToolCalls) == 0 { break }
+		if len(aiMsg.ToolCalls) == 0 {
+			break
+		}
 
 		// CRITICAL: Append the assistant message exactly as received
 		messages = append(messages, map[string]interface{}{
@@ -196,15 +227,23 @@ func (a *AIBrain) iterateAgent(messages []map[string]interface{}, url, apiKey, m
 
 		// Execute tools and append 'tool' role results
 		for _, tc := range aiMsg.ToolCalls {
-			infoLog.Printf("CORTEX_TOOL: executing %s", tc.Function.Name)
+			safeLogf("", "CORTEX_TOOL: executing %s", tc.Function.Name)
 			result, err := a.Tools.Execute(tc.Function.Name, json.RawMessage(tc.Function.Arguments))
-			if err != nil { result = "Error: " + err.Error() }
+			if err != nil {
+				result = "Error: " + err.Error()
+			}
 			messages = append(messages, map[string]interface{}{
 				"role":         "tool",
 				"tool_call_id": tc.ID,
-				"content":      result,
+				"content":      redactOnce(result),
 			})
 		}
+	}
+	// If we accumulated no final speech but did say something earlier
+	// (e.g. an interim reply while a tool loop rounds out), keep the
+	// most recent assistant content so the TTS doesn't get a blank reply.
+	if finalSpeech == "" {
+		finalSpeech = prevSpoken
 	}
 	return strings.TrimSpace(finalSpeech), nil
 }
@@ -214,8 +253,12 @@ func (a *AIBrain) cleanAIGarbage(raw string) string {
 	var goodLines []string
 	for _, line := range lines {
 		tLine := strings.TrimSpace(line)
-		if tLine == "" || strings.HasPrefix(tLine, "/") || strings.HasPrefix(tLine, "```") { continue }
-		if strings.Contains(strings.ToLower(tLine), "i can assist you") { continue }
+		if tLine == "" || strings.HasPrefix(tLine, "/") || strings.HasPrefix(tLine, "```") {
+			continue
+		}
+		if strings.Contains(strings.ToLower(tLine), "i can assist you") {
+			continue
+		}
 		goodLines = append(goodLines, tLine)
 	}
 	return strings.Join(goodLines, " ")
