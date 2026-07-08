@@ -2,6 +2,8 @@
 brain
 rust_vision/target/
 go_brain/brain
+scripts/rust_oled
+*/target/
 
 # Models (Large Files)
 models/*.bin

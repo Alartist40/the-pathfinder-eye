@@ -1,0 +1,10 @@
+[package]
+name = "rust_oled"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ssd1306 = "0.8.4"
+embedded-graphics = "0.8.1"
+linux-embedded-hal = "0.4.0"
+sysinfo = "0.30.5"

@@ -1,0 +1,21 @@
+[Unit]
+Description=THE-PATHFINDER-EYE Camera Feed (rpicam-still → /tmp/vision_feed.jpg)
+Documentation=https://github.com/Alartist40/the-pathfinder-eye
+After=local-fs.target
+Before=pathfinder-eye.service pathfinder-vision.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/the-pathfinder-eye_ai/go_brain
+ExecStart=/usr/bin/python3 /home/pi/the-pathfinder-eye_ai/scripts/camera_feed.py
+Restart=on-failure
+RestartSec=2
+StartLimitBurst=10
+StartLimitIntervalSec=60
+StandardOutput=append:/home/pi/the-pathfinder-eye_ai/logs/camera_feed.log
+StandardError=append:/home/pi/the-pathfinder-eye_ai/logs/camera_feed.log
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
