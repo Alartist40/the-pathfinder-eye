@@ -29,6 +29,7 @@ type Detection struct {
 type DetectionFrame struct {
 	Timestamp  string      `json:"timestamp"`
 	Detections []Detection `json:"detections"`
+	FPS        float64     `json:"fps,omitempty"`
 }
 
 type WorldState struct {

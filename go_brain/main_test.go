@@ -136,12 +136,12 @@ func TestResponseCachingLogic(t *testing.T) {
 	// Mock cache
 	cache := make(map[string]*AIResponse)
 	key := "test-key"
-	res := &AIResponse{Speech: "Hello"}
+	res := &AIResponse{Content: "Hello"}
 
 	cache[key] = res
 
 	// Test hit
-	if val, ok := cache[key]; !ok || val.Speech != "Hello" {
+	if val, ok := cache[key]; !ok || val.Content != "Hello" {
 		t.Error("Cache retrieval failed")
 	}
 }

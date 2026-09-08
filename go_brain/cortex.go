@@ -99,17 +99,31 @@ func (c *AICortex) handleActiveConversation() {
 	}
 
 	infoLog.Printf("CORTEX: Executing: '%s'", finalText)
-	// Speech transcripts may carry secrets (e.g. someone reading an
-	// API key aloud). Redact before the LLM call records them.
 	safeLogf("", "CORTEX: speech payload redacted: %s",
 		redactOnce(finalText))
+
+	// Try direct command dispatch first (offline, instant response)
+	level := LevelGuest
+	name := "Guest"
+	if sp, err := visionDB.GetCurrentSpeaker(); err == nil {
+		if figure, recognized := authority.VerifyFigure(sp.FaceID); recognized {
+			level = figure.Level
+			name = figure.Name
+		}
+	}
+	if processDirectCommand(finalText, level, name) {
+		lastSpokeTime = time.Now()
+		return
+	}
+
+	// Fall back to AI brain (local leafcutter LLM)
 	go indicateProcessing()
 	worldState := GetWorldStatePrompt()
 
 	speech, err := aiBrain.Process(finalText, worldState)
 	if err == nil && speech != "" {
 		_ = speak(speech)
-		lastSpokeTime = time.Now() // Update cooldown
+		lastSpokeTime = time.Now()
 	} else if err != nil {
 		infoLog.Printf("CORTEX_AGENT_ERROR: %v", err)
 		if ttsEngine != nil {

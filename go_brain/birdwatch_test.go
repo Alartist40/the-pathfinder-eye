@@ -41,6 +41,8 @@ func TestGimbalTracking(t *testing.T) {
 }
 
 func TestBirdDatabase(t *testing.T) {
+	os.Remove("/tmp/test_bird")
+	os.Remove("/tmp/test_bird_birdwatch.db")
 	os.Remove("/tmp/test_bird.sqlite")
 	bdb, err := initBirdWatchDB("/tmp/test_bird")
 	if err != nil {

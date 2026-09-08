@@ -1,0 +1,17 @@
+[Unit]
+Description=THE-PATHFINDER-EYE Pocket-TTS Microservice (CPU, 100M params)
+After=network.target sound.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/xander/Documents/portfolio/the-pathfinder-eye
+ExecStart=/usr/bin/python3 /home/xander/Documents/portfolio/the-pathfinder-eye/scripts/pocket_tts_service.py
+Restart=always
+RestartSec=3
+Environment=POCKET_TTS_VOICE=alba
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -160,7 +160,7 @@ func TestDendritePersistence(t *testing.T) {
 	d1.db.Close()
 
 	// Create second instance (simulates reboot)
-	d2, _ := initDendrite()
+	d2, _ := initDendritePath("/tmp/test_dendrite.sqlite")
 	defer teardownTestDendrite(d2)
 
 	// Check if node still exists

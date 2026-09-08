@@ -17,6 +17,11 @@ import (
 	"time"
 )
 
+type GenerateRequest struct {
+	Prompt    string `json:"prompt"`
+	MaxTokens int    `json:"max_tokens,omitempty"`
+}
+
 type AIResponse struct {
 	Content   string     `json:"content"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
@@ -263,3 +268,22 @@ func (a *AIBrain) cleanAIGarbage(raw string) string {
 	}
 	return strings.Join(goodLines, " ")
 }
+
+func SwapLeafcutterModel(modelPath string) error {
+	dropInDir := "/etc/systemd/system/leafcutter.service.d"
+	_ = os.MkdirAll(dropInDir, 0755)
+	content := fmt.Sprintf("[Service]\nExecStart=\nExecStart=/usr/local/bin/leafcutter --model %s\n", modelPath)
+	if err := ioutil.WriteFile(dropInDir+"/override.conf", []byte(content), 0644); err != nil {
+		return err
+	}
+	_ = exec.Command("sudo", "systemctl", "daemon-reload").Run()
+	return exec.Command("sudo", "systemctl", "restart", "leafcutter").Run()
+}
+
+func RevertLeafcutterSwap() error {
+	dropInFile := "/etc/systemd/system/leafcutter.service.d/override.conf"
+	_ = os.Remove(dropInFile)
+	_ = exec.Command("sudo", "systemctl", "daemon-reload").Run()
+	return exec.Command("sudo", "systemctl", "restart", "leafcutter").Run()
+}
+

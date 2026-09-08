@@ -5,12 +5,16 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/ggerganov/whisper.cpp/bindings/go/pkg/whisper"
 )
@@ -97,7 +101,7 @@ func captureAudio(durationSeconds int) ([]float32, error) {
 }
 
 func readWavSamples(tempFile string) ([]float32, error) {
-	data, err := ioutil.ReadFile(tempFile)
+	data, err := os.ReadFile(tempFile)
 	if err != nil {
 		return nil, err
 	}
@@ -193,14 +197,26 @@ func (t *TTSEngine) executeSpeak(text string, critical bool) error {
 	t.mu.Unlock()
 
 	wavPath := "/tmp/speech.wav"
-	cmd := exec.Command("/home/pi/piper/piper/piper",
-		"--model", "/home/pi/piper/en_US-kathleen-low.onnx",
-		"--output_file", wavPath,
-	)
-	stdin, _ := cmd.StdinPipe()
-	go func() { defer stdin.Close(); stdin.Write([]byte(text)) }()
-	if err := cmd.Run(); err != nil {
-		return err
+	_ = os.Remove(wavPath)
+
+	// Try Pocket-TTS service first
+	pocketURL := "http://localhost:8020/tts"
+	payload, _ := json.Marshal(map[string]string{"text": text})
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Post(pocketURL, "application/json", bytes.NewReader(payload))
+	if err == nil && resp.StatusCode == 200 {
+		data, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr == nil && len(data) > 100 {
+			_ = os.WriteFile(wavPath, data, 0644)
+		}
+	}
+
+	// Fallback to espeak-ng if Pocket-TTS is not running or failed to produce WAV
+	if fi, err := os.Stat(wavPath); err != nil || fi.Size() <= 100 {
+		espeakCmd := exec.Command("espeak-ng", "-w", wavPath, text)
+		_ = espeakCmd.Run()
 	}
 
 	playCmd := exec.Command("aplay", "-D", t.Device, wavPath)

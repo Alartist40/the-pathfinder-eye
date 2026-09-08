@@ -114,27 +114,79 @@ func handleCommandSequence() {
 	}
 }
 
-// processDirectCommand handles robot commands using semantic routing.
-// Falls back to keyword extraction when routing confidence is low.
-// Returns true if command was handled, false if unrecognized.
+// processDirectCommand handles robot commands using Needle 2 for tool
+// calling and intent classification. Falls back to the Leafcutter LLM
+// for open conversation. Returns true if command was handled, false if
+// unrecognized.
 func processDirectCommand(cmd string, level AuthorityLevel, name string) bool {
-	// Try semantic routing — routes to basic_chat, thinking, or tool_call.
-	route, _ := ClassifyRoute(cmd)
+	cmdParsed := ExtractCommand(cmd)
 
-	// Only use router for tool_call; basic_chat/thinking go to AI brain.
-	if route != RouteToolCall {
-		// Fallback: check for exit/stop/sleep which are always valid.
-		lower := strings.ToLower(cmd)
-		if strings.Contains(lower, "exit") || strings.Contains(lower, "stop") ||
-			strings.Contains(lower, "sleep") || strings.Contains(lower, "shut down") {
-			return handleExitCommand()
+	// Exit/stop/sleep handling — these keywords never reach dispatchAction
+	// because ExtractCommand maps "stop"/"sleep" to action="deactivate"
+	// without a target. Detect them here before the dispatch.
+	lower := strings.ToLower(cmd)
+	if strings.Contains(lower, "exit") || strings.Contains(lower, "shut down") ||
+		(lower == "stop") || (lower == "sleep") || (lower == "stop now") {
+		return handleExitCommand()
+	}
+
+	if dispatchAction(cmdParsed, level, name) {
+		return true
+	}
+
+	// Needle 2: tool calling + intent classification in one pass.
+	// Returns immediately on a successful tool execution or mode change.
+	if handled, result := processCommandNeedleWithAuth(cmd, level, name); handled {
+		infoLog.Printf("NEEDLE2_ROUTE: handled=%v result=%q raw=%q", handled, result, cmd)
+		return true
+	}
+
+	// Leafcutter LLM fallback for open conversation.
+	if aiBrain != nil {
+		worldCtx := GetWorldStatePrompt()
+		speech, err := aiBrain.Process(cmd, worldCtx)
+		if err == nil && speech != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// dispatchAction runs the action+target handlers. Returns true if the
+// command was handled, false otherwise. Used by the rule parser
+// path (processDirectCommand) and the Needle 2 intent path.
+//
+// Behavior matches the original processDirectCommand:
+//   - If action is empty but target matches a known song/document/mode,
+//     infer the action (play/read/activate/move) and dispatch.
+//   - If no action and no target, fall back to exit/stop/sleep handling.
+//   - Otherwise, switch on the action verb.
+func dispatchAction(cmdParsed ParsedCommand, level AuthorityLevel, name string) bool {
+	// If no action parsed, infer from known targets or check exit/stop/sleep.
+	if cmdParsed.Action == "" {
+		if cmdParsed.Target != "" {
+			switch cmdParsed.Target {
+			case "pathfinder_song", "adventurer_song":
+				cmdParsed.Action = "play"
+				return handlePlayAction(cmdParsed)
+			case "law", "pledge", "aim", "motto", "adventurer_law", "adventurer_pledge":
+				cmdParsed.Action = "read"
+				return handleReadAction(cmdParsed)
+			case "birdwatch":
+				cmdParsed.Action = "activate"
+				return handleActivateAction(cmdParsed)
+			case "about_turn":
+				cmdParsed.Action = "move"
+				return handleMoveAction(cmdParsed)
+			default:
+				return false
+			}
 		}
 		return false // let AI brain handle it
 	}
 
-	// Route is tool_call — extract structured action + target.
-	cmdParsed := ExtractCommand(cmd)
-	infoLog.Printf("ROUTER: action=%q target=%q raw=%q", cmdParsed.Action, cmdParsed.Target, cmd)
+	infoLog.Printf("ROUTER: action=%q target=%q", cmdParsed.Action, cmdParsed.Target)
 
 	switch cmdParsed.Action {
 	case "test":
@@ -194,12 +246,7 @@ func processDirectCommand(cmd string, level AuthorityLevel, name string) bool {
 		return true
 
 	default:
-		// Fallback: check for exit/stop/sleep.
-		lower := strings.ToLower(cmd)
-		if strings.Contains(lower, "exit") || strings.Contains(lower, "stop") ||
-			strings.Contains(lower, "sleep") || strings.Contains(lower, "shut down") {
-			return handleExitCommand()
-		}
+		// Unknown action — let the AI brain handle it.
 		return false
 	}
 }
@@ -320,6 +367,10 @@ func handleReadAction(cmd ParsedCommand) bool {
 		file = "Adventurer Law.md"
 	case "adventurer_pledge":
 		file = "Adventurer Pledge.md"
+	case "adventurer_aim":
+		file = "Pathfinder Aim.md"
+	case "adventurer_motto":
+		file = "Pathfinder Motto.md"
 	default:
 		// Try pathfinder prefix.
 		file = "Pathfinder " + strings.Title(cmd.Target) + ".md"
@@ -347,19 +398,21 @@ func handleActivateAction(cmd ParsedCommand) bool {
 	return true
 }
 
-// handleDeactivateAction stops active modes.
+// handleDeactivateAction stops active modes or handles general stop.
 func handleDeactivateAction(cmd ParsedCommand) bool {
 	switch cmd.Target {
 	case "birdwatch":
 		birdwatchActive = false
+		return true
 	case "follow":
 		followModeActive = false
+		return true
 	case "security":
-		// security mode stop handled by exit path
+		return true
 	default:
-		return false
+		// General "stop" with no specific target: full stop.
+		return handleExitCommand()
 	}
-	return true
 }
 
 func parsePositiveInt(s string) (int, error) {

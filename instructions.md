@@ -48,4 +48,28 @@ Access the visual feed and status at:
 
 ---
 
-**Status:** v6.5 PRO CALIBRATED 🟢
+## v9.0 Update: Needle 2 Tool & Intent Engine + AntiDoom Conversation Quality
+
+The robot now uses two complementary ML upgrades:
+
+1. **Needle 2 Unified Tool & Intent Engine** (45M params, 14 MB binary, ~28 MB RAM session) to understand voice commands and execute hardware tools. Runs locally on port 8082 with sub-10ms response time.
+
+2. **AntiDoom** FTPO pipeline for the Ministral-3B conversation model. Eliminates repetition loops in the "Attention" AI conversation mode by training a LoRA adapter on Final Token Preference Optimization pairs. Installed in the `antidoom/` directory. See `antidoom/README.md`.
+
+**Status:** v9.0 NEEDLE 2 + ANTIDOOM 🟢
+
+---
+
+## Needle 2 Voice Recognition & Tool Calling
+
+The robot now uses **Needle 2** (45M params, 14 MB) to understand
+voice commands and direct hardware tool calls. Instead of requiring exact keywords, Needle 2 interprets
+natural speech, paraphrases, and parameters directly into structured tool executions.
+
+**What this means for users:** You can say commands naturally.
+"Drive ahead fast" works for moving forward. "Recite the pledge" works
+for reciting the pledge. "Look up" adjusts camera gimbal.
+
+**Thinking mode:** Say "Attention" to activate the AI conversation
+loop (LeafcutterLLM/Ministral), just like before. Say "Instruction sleep" to
+deactivate.

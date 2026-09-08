@@ -11,6 +11,9 @@ models/*.gguf
 models/*.onnx
 models/*.xml
 
+# Voice clones (user-specific)
+voices/*.safetensors
+
 # Logs & DBs
 logs/*.log
 db/*.sqlite*

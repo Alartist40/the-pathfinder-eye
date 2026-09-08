@@ -366,14 +366,20 @@ func handleAIThink(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	worldCtx := GetWorldStatePrompt()
 
-	route, confidence := ClassifyRoute(q)
-	infoLog.Printf("AI_THINK: route=%s confidence=%.2f query=%q", route, confidence, q)
+	// Try Needle 2 for tool commands, fall back to LLM for conversation.
+	speech := ""
+	if handled, result := processCommandNeedle(q); handled {
+		speech = result
+	} else {
+		var err error
+		speech, err = aiBrain.Process(q, worldCtx)
+		if err != nil {
+			errorLog.Printf("AI_THINK: error: %v", err)
+		}
+	}
 
-	speech, _ := aiBrain.Process(q, worldCtx)
 	json.NewEncoder(w).Encode(map[string]string{
-		"speech":     speech,
-		"route":      route.String(),
-		"confidence": fmt.Sprintf("%.2f", confidence),
+		"speech": speech,
 	})
 }
 

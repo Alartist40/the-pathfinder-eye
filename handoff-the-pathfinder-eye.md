@@ -80,6 +80,7 @@ To preserve the 8GB RAM limit, the heavy LLM is kept offline until explicitly re
 │   ├── main.go              # Orchestrator & API
 │   ├── voice.go             # Async TTS queue + Whisper STT
 │   ├── voice_commands.go    # Wake word + Rank verification loop
+│   ├── needle_intent.go     # Needle 2 client: unified classifier + tool caller
 │   ├── dendrite.go          # Memory Engine
 │   └── vision.go            # Reads JSON events + Speaker ID
 ├── rust_vision/
@@ -223,6 +224,7 @@ of review. Of those, the following CRITICAL bugs were fixed:
   needs new tests for compressor and redact.
 - Cortex → Cynapse Cortex integration (`leafcutter.service`
   fanned out via Cynapse MCP) is on hold until Cynapse v3.x.
+- Needle 2 tool-calling & intent engine: runs on port 8082 (`needle.service`) using the ARM64 binary (`/home/xander/Downloads/models/needle2/linux-arm64/needle`).
 
 ### Deployment notes
 - Build on the Pi, not the dev workstation. The cgo whisper
@@ -233,6 +235,35 @@ of review. Of those, the following CRITICAL bugs were fixed:
   the Pi: `sudo cp systemd/camera-feed.service /etc/systemd/system/
   && sudo systemctl daemon-reload && sudo systemctl enable --now
   camera-feed.service`.
+- Needle 2 service: systemd unit `needle.service` runs on port 8082.
+  `sudo cp systemd/needle.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now needle.service`.
+- Pocket-TTS service: systemd unit `pocket-tts.service` runs on port 8020.
+  `sudo cp systemd/pocket-tts.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now pocket-tts.service`.
 - To lock down the LAN API, set
   `PATHFINDER_EYE_HTTP_TOKEN` in /etc/default/pathfinder-eye or
   the systemd unit's Environment=.
+
+---
+
+## v9.0 — Needle 2 Integration: Unified Classifier + Tool Caller (2026-09-08)
+
+### Overview
+The voice command pipeline now uses **Needle 2** (45M parameters, 14 MB `.cact` binary, ~28MB RAM session, 500 tok/s on Pi 5) as the unified classifier + tool caller. It provides direct hardware execution with calibrated confidence gating, replacing all prior intent classification services.
+
+### Integration contract
+```
+Go brain → POST localhost:8082/complete {"input": "move left"}
+Needle 2 → {"type":"call","function_calls":[{"name":"move","arguments":{"direction":"left"}}],"confidence":0.70}
+Go brain → execute hardware tool / dispatchAction
+```
+
+If `confidence < 0.5` or no function call is returned, the command falls through to the conversation LLM (Ministral 3B).
+
+### What's in the repo
+- `config/needle_tools.json` — 7 declared tools (move, look, light, play_resource, read_document, activate, deactivate).
+- `go_brain/needle_intent.go` — Needle 2 client with circuit-breaker health tracking and direct tool execution.
+- `systemd/needle.service` — ARM64 service unit on port 8082.
+- `systemd/pocket-tts.service` — RAM-bound Pocket-TTS service on port 8020.
+
+### AntiDoom companion upgrade (Ministral-3B conversation quality)
+The Ministral-3B model in `leafcutter.service` is protected against repetition loops using AntiDoom FTPO LoRA adapters. Deploy = swap the GGUF file on disk + restart leafcutter.

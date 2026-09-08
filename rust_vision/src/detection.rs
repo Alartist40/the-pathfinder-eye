@@ -77,12 +77,20 @@ impl YOLODetector {
 
         self.net.set_input(&blob, "", 1.0, Scalar::default())?;
 
-        let mut outputs = Vector::<Mat>::new();
-        self.net.forward(&mut outputs, &Vector::<String>::new())?;
-
-        if outputs.is_empty() {
+        let output = self.net.forward_single_def()?;
+        let total = output.total() as usize;
+        if total < YOLO_COLS {
             return Ok(Vec::new());
         }
+
+        let data = output.data();
+        if data.is_null() {
+            return Ok(Vec::new());
+        }
+        let slice: &[f32] =
+            unsafe { std::slice::from_raw_parts(data as *const f32, total) };
+
+        let rows = total / YOLO_COLS;
 
         let frame_w = frame.cols();
         let frame_h = frame.rows();
@@ -91,55 +99,38 @@ impl YOLODetector {
 
         let mut candidates: Vec<(Rect, f32, i32)> = Vec::new();
 
-        for i in 0..outputs.len() {
-            let output = outputs.get(i)?;
-            let total = output.total()? as usize;
-            if total < YOLO_COLS {
+        for row in 0..rows {
+            let base = row * YOLO_COLS;
+            let obj_conf = slice[base + 4];
+            if obj_conf < YOLO_CONFIDENCE_THRESHOLD {
                 continue;
             }
 
-            let data = output.data();
-            if data.is_null() {
+            let mut max_score = 0.0f32;
+            let mut class_id = -1i32;
+            for c in 5..YOLO_COLS {
+                if slice[base + c] > max_score {
+                    max_score = slice[base + c];
+                    class_id = (c - 5) as i32;
+                }
+            }
+
+            let confidence = obj_conf * max_score;
+            if confidence < YOLO_CONFIDENCE_THRESHOLD || class_id < 0 {
                 continue;
             }
-            let slice: &[f32] =
-                unsafe { std::slice::from_raw_parts(data as *const f32, total) };
 
-            let rows = total / YOLO_COLS;
+            let cx = slice[base] * scale_x;
+            let cy = slice[base + 1] * scale_y;
+            let w = slice[base + 2] * scale_x;
+            let h = slice[base + 3] * scale_y;
 
-            for row in 0..rows {
-                let base = row * YOLO_COLS;
-                let obj_conf = slice[base + 4];
-                if obj_conf < YOLO_CONFIDENCE_THRESHOLD {
-                    continue;
-                }
+            let x = (cx - w / 2.0).max(0.0) as i32;
+            let y = (cy - h / 2.0).max(0.0) as i32;
+            let bw = w as i32;
+            let bh = h as i32;
 
-                let mut max_score = 0.0f32;
-                let mut class_id = -1i32;
-                for c in 5..YOLO_COLS {
-                    if slice[base + c] > max_score {
-                        max_score = slice[base + c];
-                        class_id = (c - 5) as i32;
-                    }
-                }
-
-                let confidence = obj_conf * max_score;
-                if confidence < YOLO_CONFIDENCE_THRESHOLD || class_id < 0 {
-                    continue;
-                }
-
-                let cx = slice[base] * scale_x;
-                let cy = slice[base + 1] * scale_y;
-                let w = slice[base + 2] * scale_x;
-                let h = slice[base + 3] * scale_y;
-
-                let x = (cx - w / 2.0).max(0.0) as i32;
-                let y = (cy - h / 2.0).max(0.0) as i32;
-                let bw = w as i32;
-                let bh = h as i32;
-
-                candidates.push((Rect::new(x, y, bw, bh), confidence, class_id));
-            }
+            candidates.push((Rect::new(x, y, bw, bh), confidence, class_id));
         }
 
         if candidates.is_empty() {

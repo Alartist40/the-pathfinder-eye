@@ -23,6 +23,7 @@ var actionAliases = map[string]string{
 	"play": "play", "song": "play", "music": "play", "audio": "play", "sound": "play",
 	// read/recite variants
 	"read": "read", "recite": "read", "say": "read", "tell": "read",
+	"instructions": "read", "instruction": "read",
 	// activate/enable variants
 	"activate": "activate", "enable": "activate", "start": "activate",
 	"enter": "activate", "mode": "activate", "initiate": "activate",
@@ -43,7 +44,8 @@ var actionAliases = map[string]string{
 // targetAliases normalize STT variations to canonical target names.
 var targetAliases = map[string]string{
 	// birdwatch STT variations
-	"birdwatch": "birdwatch", "bired": "birdwatch", "beard": "birdwatch",
+	"birdwatch": "birdwatch", "bird watch": "birdwatch",
+	"bird": "birdwatch", "bired": "birdwatch", "beard": "birdwatch",
 	"word": "birdwatch", "third": "birdwatch",
 	// movement directions
 	"forward": "forward", "ahead": "forward", "straight": "forward",
@@ -109,13 +111,53 @@ func ExtractCommand(text string) ParsedCommand {
 		}
 	}
 
-	// Special case: "about turn" and "turn about" need both tokens.
+	// Special case: multi-word phrases need both tokens.
 	if strings.Contains(lower, "about turn") || strings.Contains(lower, "turn about") {
 		bestTarget = "about_turn"
+	}
+	if strings.Contains(lower, "adventurer song") || strings.Contains(lower, "adventurer soundtrack") {
+		bestTarget = "adventurer_song"
+		cmd.Action = "play"
+	}
+	if strings.Contains(lower, "pathfinder song") || strings.Contains(lower, "pathfinder soundtrack") {
+		if bestTarget == "" {
+			bestTarget = "pathfinder_song"
+			cmd.Action = "play"
+		}
 	}
 	if strings.Contains(lower, "deep thought") || strings.Contains(lower, "thinking mode") {
 		bestTarget = "deep"
 		cmd.Action = "deep"
+	}
+	if strings.Contains(lower, "adventurer instructions") || strings.Contains(lower, "adventurer instruction") {
+		bestTarget = "adventurer_law"
+		cmd.Action = "read"
+	}
+	if strings.Contains(lower, "adventurer pledge") {
+		bestTarget = "adventurer_pledge"
+		cmd.Action = "read"
+	}
+	if strings.Contains(lower, "adventurer law") {
+		bestTarget = "adventurer_law"
+		cmd.Action = "read"
+	}
+	if strings.Contains(lower, "adventurer aim") {
+		bestTarget = "adventurer_aim"
+		cmd.Action = "read"
+	}
+	if strings.Contains(lower, "adventurer motto") {
+		bestTarget = "adventurer_motto"
+		cmd.Action = "read"
+	}
+	if strings.Contains(lower, "pathfinder instructions") || strings.Contains(lower, "pathfinder instruction") {
+		bestTarget = "law"
+		cmd.Action = "read"
+	}
+	if strings.Contains(lower, "instructions") || strings.Contains(lower, "instruction") {
+		if bestTarget == "" {
+			bestTarget = "law"
+			cmd.Action = "read"
+		}
 	}
 
 	cmd.Target = bestTarget

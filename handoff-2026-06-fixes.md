@@ -35,11 +35,12 @@ updated for isolation.
 | `main.rs` | Wired up `FaceRecognizer` with graceful fallback | Face recognition was uninitialized; now graceful if model missing |
 
 ### Documentation
-
+### Documentation
 | File | What Changed | Why |
 |------|-------------|-----|
 | `PRESENTATION.md` | Added v8.1 section | Reflect current code state |
 | `handoff-2026-06-fixes.md` | Created | Session handoff |
+| `handoff-the-pathfinder-eye.md` | Updated | Needle 2 v9.0 unified tool & intent handoff |
 
 ## Critical Items Before Production
 
