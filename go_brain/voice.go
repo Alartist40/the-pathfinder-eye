@@ -1,0 +1,283 @@
+/**
+ * THE-PATHFINDER-EYE : Voice Management Module (v3.1 - Protected Feedback)
+ */
+
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"sync"
+	"time"
+
+	"github.com/ggerganov/whisper.cpp/bindings/go/pkg/whisper"
+)
+
+// Audio timing constants — enforce THE-PATHFINDER-EYE Absolute Audio
+// Preservation Policy. Any change must come from the project owner.
+//
+//	PER-WAKE-WORD-LISTEN: time the wake-word listener listens before
+//	  deciding "no speech yet" and looping. AUDIO_POLICY.md rule 3.
+//
+//	PER-COMMAND-LISTEN:  time the active-conversation / command-sequence
+//	  listener listens after wake before processing. AUDIO_POLICY.md rule 4.
+//
+//	POST-SPEECH-COOLDOWN: minimum gap between robot finishing speaking
+//	  and the wake listening resuming (anti-feedback). Policy rule 1.
+const (
+	PerWakeWordListenSec  = 3
+	PerCommandListenSec   = 5
+	PostSpeechCooldownSec = 2
+)
+
+type TTSEngine struct {
+	Device     string
+	Speed      float32
+	Volume     int
+	currentTTS *exec.Cmd
+	isCritical bool // If true, this speech cannot be interrupted
+	mu         sync.Mutex
+}
+
+var (
+	whisperCtx   whisper.Context
+	isVoiceReady bool
+	whisperMu    sync.Mutex
+	ttsEngine    *TTSEngine
+	ttsQueue     chan ttsMessage
+)
+
+type ttsMessage struct {
+	text     string
+	critical bool
+}
+
+func initVoice(modelPath string) error {
+	infoLog.Printf("VOICE_INIT: Loading model from %s", modelPath)
+	model, err := whisper.New(modelPath)
+	if err != nil {
+		return err
+	}
+	ctx, err := model.NewContext()
+	if err != nil {
+		return err
+	}
+	_ = ctx.SetLanguage("en")
+	ctx.SetThreads(6)
+	whisperCtx = ctx
+	isVoiceReady = true
+	return nil
+}
+
+var preferredMicDevice string
+
+func captureAudio(durationSeconds int) ([]float32, error) {
+	tempFile := "/tmp/capture.wav"
+	devices := []string{"plughw:0,0", "plughw:1,0", "plughw:0,0", "default"}
+
+	if preferredMicDevice != "" {
+		devices = append([]string{preferredMicDevice}, devices...)
+	}
+
+	for _, dev := range devices {
+		_ = os.Remove(tempFile)
+		cmd := exec.Command("arecord", "-D", dev, "-d", fmt.Sprintf("%d", durationSeconds),
+			"-f", "S16_LE", "-r", "16000", "-c", "1", tempFile)
+
+		if err := cmd.Run(); err == nil {
+			if fi, err := os.Stat(tempFile); err == nil && fi.Size() > 1024 {
+				preferredMicDevice = dev
+				return readWavSamples(tempFile)
+			}
+		}
+	}
+	return nil, fmt.Errorf("no working mic")
+}
+
+func readWavSamples(tempFile string) ([]float32, error) {
+	data, err := os.ReadFile(tempFile)
+	if err != nil {
+		return nil, err
+	}
+	samples := make([]float32, (len(data)-44)/2)
+	for i := 0; i < len(samples); i++ {
+		val := int16(data[44+i*2]) | int16(data[44+i*2+1])<<8
+		samples[i] = float32(val) / 32768.0
+	}
+	return samples, nil
+}
+
+func transcribeAudio(samples []float32) (string, error) {
+	if !isVoiceReady {
+		return "", fmt.Errorf("deaf")
+	}
+	whisperMu.Lock()
+	defer whisperMu.Unlock()
+	whisperCtx.SetTranslate(false)
+	_ = whisperCtx.SetLanguage("en")
+	_ = whisperCtx.Process(samples, nil, nil, nil)
+	var res string
+	for {
+		s, err := whisperCtx.NextSegment()
+		if err != nil {
+			break
+		}
+		res += s.Text
+	}
+	return res, nil
+}
+
+func translateJapaneseToEnglish(samples []float32) (string, error) {
+	if !isVoiceReady {
+		return "", fmt.Errorf("deaf")
+	}
+	whisperMu.Lock()
+	defer whisperMu.Unlock()
+	whisperCtx.SetTranslate(true)
+	_ = whisperCtx.SetLanguage("ja")
+	if err := whisperCtx.Process(samples, nil, nil, nil); err != nil {
+		return "", err
+	}
+	var res string
+	for {
+		s, err := whisperCtx.NextSegment()
+		if err != nil {
+			break
+		}
+		res += s.Text
+	}
+	return res, nil
+}
+
+func initTTS() (*TTSEngine, error) {
+	engine := &TTSEngine{Device: "plughw:0,0", Speed: 1.0, Volume: 170}
+	ttsQueue = make(chan ttsMessage, 10)
+	go ttsWorker(engine)
+	return engine, nil
+}
+
+func ttsWorker(t *TTSEngine) {
+	for msg := range ttsQueue {
+		_ = t.executeSpeak(msg.text, msg.critical)
+	}
+}
+
+func (t *TTSEngine) executeSpeak(text string, critical bool) error {
+	if text == "" {
+		return nil
+	}
+
+	// Only kill if the CURRENT speech is NOT critical
+	t.mu.Lock()
+	if t.isCritical {
+		t.mu.Unlock()
+		// Wait for critical speech to finish naturally
+		for {
+			t.mu.Lock()
+			if !t.isCritical {
+				t.mu.Unlock()
+				break
+			}
+			t.mu.Unlock()
+			time.Sleep(10 * time.Millisecond)
+		}
+	} else {
+		t.mu.Unlock()
+		killTTS()
+	}
+
+	t.mu.Lock()
+	t.isCritical = critical
+	t.mu.Unlock()
+
+	wavPath := "/tmp/speech.wav"
+	_ = os.Remove(wavPath)
+
+	// Try Pocket-TTS service first
+	pocketURL := "http://localhost:8020/tts"
+	payload, _ := json.Marshal(map[string]string{"text": text})
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Post(pocketURL, "application/json", bytes.NewReader(payload))
+	if err == nil && resp.StatusCode == 200 {
+		data, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr == nil && len(data) > 100 {
+			_ = os.WriteFile(wavPath, data, 0644)
+		}
+	}
+
+	// Fallback to espeak-ng if Pocket-TTS is not running or failed to produce WAV
+	if fi, err := os.Stat(wavPath); err != nil || fi.Size() <= 100 {
+		espeakCmd := exec.Command("espeak-ng", "-w", wavPath, text)
+		_ = espeakCmd.Run()
+	}
+
+	playCmd := exec.Command("aplay", "-D", t.Device, wavPath)
+	t.mu.Lock()
+	t.currentTTS = playCmd
+	t.mu.Unlock()
+
+	_ = playCmd.Run()
+
+	t.mu.Lock()
+	t.currentTTS = nil
+	t.isCritical = false
+	t.mu.Unlock()
+
+	return nil
+}
+
+func (t *TTSEngine) Speak(text string) error {
+	if t == nil {
+		return nil
+	}
+	ttsQueue <- ttsMessage{text: text, critical: false}
+	return nil
+}
+
+func (t *TTSEngine) SpeakCritical(text string) error {
+	if t == nil {
+		return nil
+	}
+	ttsQueue <- ttsMessage{text: text, critical: true}
+	return nil
+}
+
+func killTTS() {
+	if ttsEngine == nil {
+		return
+	}
+	ttsEngine.mu.Lock()
+	// Never kill if it's marked critical (feedback like "Yes" or "Understood")
+	if ttsEngine.isCritical {
+		ttsEngine.mu.Unlock()
+		return
+	}
+	if ttsEngine.currentTTS != nil && ttsEngine.currentTTS.Process != nil {
+		_ = ttsEngine.currentTTS.Process.Kill()
+		_ = ttsEngine.currentTTS.Wait()
+		ttsEngine.currentTTS = nil
+	}
+	ttsEngine.mu.Unlock()
+	_ = exec.Command("pkill", "-9", "aplay").Run()
+}
+
+func speak(text string) error {
+	if ttsEngine == nil {
+		return nil
+	}
+	return ttsEngine.Speak(text)
+}
+
+func speakCritical(text string) error {
+	if ttsEngine == nil {
+		return nil
+	}
+	return ttsEngine.SpeakCritical(text)
+}

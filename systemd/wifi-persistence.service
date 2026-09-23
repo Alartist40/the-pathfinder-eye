@@ -1,0 +1,13 @@
+[Unit]
+Description=Ensure WiFi Reconnection
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/home/pi/the-pathfinder-eye_ai/scripts/ensure_wifi.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

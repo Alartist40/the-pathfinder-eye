@@ -1,0 +1,144 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "move",
+      "description": "Move or turn the robot in a direction.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": ["forward", "backward", "left", "right", "stop", "about_turn"]
+          },
+          "speed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          }
+        },
+        "required": ["direction"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "stop",
+      "description": "Stop all robot motors and halt movement immediately.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "look",
+      "description": "Control camera gimbal angle.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": ["up", "down", "left", "right", "center"]
+          }
+        },
+        "required": ["target"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "light",
+      "description": "Set the robot LED lights color.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "color": {
+            "type": "string",
+            "enum": ["red", "green", "blue", "yellow", "off"]
+          }
+        },
+        "required": ["color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "play_resource",
+      "description": "Play an anthem or song.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "enum": ["pathfinder_song", "adventurer_song"]
+          }
+        },
+        "required": ["resource"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "read_document",
+      "description": "Recite a law, pledge, aim, or motto.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "document": {
+            "type": "string",
+            "enum": [
+              "pathfinder_law",
+              "pathfinder_pledge",
+              "pathfinder_aim",
+              "pathfinder_motto",
+              "adventurer_law",
+              "adventurer_pledge"
+            ]
+          }
+        },
+        "required": ["document"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "activate",
+      "description": "Activate a robot mode.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["birdwatch", "follow", "attention", "remote", "deep", "translate", "security"]
+          }
+        },
+        "required": ["mode"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "deactivate",
+      "description": "Deactivate a robot mode or stop all activity.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["birdwatch", "follow", "attention", "remote", "deep", "security", "translate"]
+          }
+        },
+        "required": ["mode"]
+      }
+    }
+  }
+]

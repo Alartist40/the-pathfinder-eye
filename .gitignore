@@ -1,0 +1,33 @@
+# Binaries
+brain
+rust_vision/target/
+go_brain/brain
+go_brain/pathfinder
+scripts/rust_oled
+*/target/
+target/
+venv/
+
+# Models (Large Files)
+models/*.bin
+models/*.gguf
+models/*.onnx
+models/*.xml
+models/*.pb
+
+# Voice clones (user-specific)
+voices/*.safetensors
+
+# Logs & DBs
+logs/*.log
+db/*.sqlite*
+/tmp/capture.wav
+/tmp/speech.wav
+/tmp/vision_feed.jpg
+/tmp/detections.json
+
+# System/IDE
+.env
+.git/
+__pycache__/
+*.tmp

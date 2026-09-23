@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "calibrated_at": "2026-05-14T00:00:00Z",
+  "pan": {
+    "current": 90,
+    "min": 0,
+    "max": 180,
+    "center": 90
+  },
+  "tilt": {
+    "current": 50,
+    "min": 0,
+    "max": 100,
+    "center": 50
+  }
+}

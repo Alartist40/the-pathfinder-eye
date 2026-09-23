@@ -1,0 +1,16 @@
+[Unit]
+Description=THE-PATHFINDER-EYE Needle 2 Tool-Calling Engine (RAM-bound)
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/the-pathfinder-eye_ai
+ExecStart=/home/pi/the-pathfinder-eye_ai/bin/needle --tools /home/pi/the-pathfinder-eye_ai/config/needle_tools.json --serve --port 8082
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
