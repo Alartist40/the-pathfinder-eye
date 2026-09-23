@@ -89,10 +89,10 @@ This script will:
 - ✅ Build whisper.cpp and download the 500MB `ggml-small.bin` model
 - ✅ Clone/build llama.cpp (shared libraries)
 - ✅ Build the LeafcutterLLM Rust server (FFI to llama.cpp)
-- ✅ Build the Go Brain
-- ✅ Build the Rust Vision Engine (may warn if OpenCV Rust bindings fail)
+- ✅ Build the Go Brain (`go build -o ../brain .`)
+- ✅ Build the Rust Vision Engine (YOLOv8/v5 dual detection & face tracking)
 - ✅ Install systemd services
-- ⚠️ **PROMPT you** about downloading the ~5.3GB Qwen3.5-9B-IQ4_NL model (you can skip and copy it via USB)
+- ⚠️ **PROMPT you** about downloading the ~1.5GB Qwen3.5-2B-Q4_K_M model (you can skip and copy it via USB)
 
 **Estimated time:** 15-30 minutes (excluding the LLM model download).
 
@@ -100,23 +100,23 @@ This script will:
 
 ## 💾 Step 4: The Model (YOU decide how)
 
-The LLM model is **~5.3GB** (`Qwen3.5-9B-IQ4_NL.gguf`). The setup script will ask if you want to download it. Options:
+The default production LLM model is **~1.5GB** (`Qwen3.5-2B-Q4_K_M.gguf`), perfectly sized for RPi 5 thermal and memory headroom. The setup script will ask if you want to download it. Options:
 
-### Option A: Download on the Pi (slow but automatic)
-Say `y` when the script prompts. This will take 1-2 hours on slow WiFi.
+### Option A: Download on the Pi (automatic)
+Say `y` when the script prompts.
 
 ### Option B: Download on a fast machine, copy via USB
 1. On a fast machine with good internet:
    ```bash
-   wget -O Qwen3.5-9B-IQ4_NL.gguf "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF/resolve/main/Qwen_Qwen3.5-9B-IQ4_NL.gguf?download=true"
+   wget -O Qwen3.5-2B-Q4_K_M.gguf "https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf?download=true"
    ```
 2. Copy the file to the Pi's SD card or via SCP:
    ```bash
-   scp Qwen3.5-9B-IQ4_NL.gguf pi@<pi-ip>:/home/pi/the-pathfinder-eye_ai/models/
+   scp Qwen3.5-2B-Q4_K_M.gguf pi@<pi-ip>:/home/pi/the-pathfinder-eye_ai/models/
    ```
 
 ### Option C: Use a different model
-Edit `go_brain/main.go` and change the `modelPath` to any `.gguf` file llama.cpp supports. Then rebuild:
+Edit `go_brain/main.go` and change the `modelPath` to any `.gguf` file llama.cpp supports (e.g. `Qwen3.5-4B-Q4_K_M.gguf`). Then rebuild:
 ```bash
 cd /home/pi/the-pathfinder-eye_ai/go_brain
 go build -o ../brain .
@@ -190,13 +190,12 @@ go build -o ../brain .
 ```
 
 ### Issue: Rust Vision fails to build (OpenCV Rust bindings)
-**Fix:** The OpenCV Rust crate (`opencv-rs`) is notoriously tricky. The vision engine is currently a **stub** — the YOLO detector returns empty results and only face detection works. If the build fails, the robot will still function; you just won't have object detection until the vision engine is completed.
+**Fix:** The Rust Vision Engine uses OpenCV DNN for YOLOv8/v5 detection and face tracking. If `opencv` crate fails to build on a headless Lite install, install `libopencv-dev` and ensure `PKG_CONFIG_PATH` is set. If needed, the Go Brain will continue running hardware and voice control even if the vision sub-process is absent.
 
-To skip vision and still use face detection + dashboard:
 ```bash
-# The Go brain starts the vision binary if it exists.
-# If it doesn't exist, the brain runs without vision.
-# Face detection uses OpenCV directly in Go via a separate path.
+sudo apt-get install -y libopencv-dev clang
+cd /home/pi/the-pathfinder-eye_ai/rust_vision
+cargo build --release
 ```
 
 ### Issue: LeafcutterLLM uses too much RAM
