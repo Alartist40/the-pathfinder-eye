@@ -290,7 +290,10 @@ func main() {
 	executor = &ActionExecutor{dendrite: dendrite}
 
 	ttsEngine, _ = initTTS()
-	voiceModel := "../models/ggml-small.bin"
+	voiceModel := "../models/ggml-base.en.bin"
+	if _, err := os.Stat(voiceModel); err != nil {
+		voiceModel = "../models/ggml-tiny.en.bin"
+	}
 
 	cortex = newCortex()
 	go func() {

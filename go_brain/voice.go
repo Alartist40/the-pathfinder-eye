@@ -30,9 +30,9 @@ import (
 //	POST-SPEECH-COOLDOWN: minimum gap between robot finishing speaking
 //	  and the wake listening resuming (anti-feedback). Policy rule 1.
 const (
-	PerWakeWordListenSec  = 3
-	PerCommandListenSec   = 5
-	PostSpeechCooldownSec = 2
+	PerWakeWordListenSec  = 2
+	PerCommandListenSec   = 4
+	PostSpeechCooldownSec = 1
 )
 
 type TTSEngine struct {
@@ -68,7 +68,7 @@ func initVoice(modelPath string) error {
 		return err
 	}
 	_ = ctx.SetLanguage("en")
-	ctx.SetThreads(6)
+	ctx.SetThreads(4)
 	whisperCtx = ctx
 	isVoiceReady = true
 	return nil
