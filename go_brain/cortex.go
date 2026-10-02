@@ -27,6 +27,16 @@ func (c *AICortex) StartUnifiedAwareness() {
 
 	for {
 		if atomic.LoadInt32(&commandBusy) == 1 {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		// Anti-feedback: If robot is speaking or finished within cooldown, wait
+		if ttsEngine != nil && ttsEngine.isSpeaking() {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		if time.Since(lastSpokeTime) < time.Duration(PostSpeechCooldownSec)*time.Second {
 			time.Sleep(200 * time.Millisecond)
 			continue
 		}
@@ -35,12 +45,12 @@ func (c *AICortex) StartUnifiedAwareness() {
 		// AUDIO_POLICY.md rule 3: 3-second uninterruptible window.
 		samples, err := captureAudio(PerWakeWordListenSec)
 		if err != nil {
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 			continue
 		}
 
-		// 2. VOLUME GATE (Optimized to 0.003 to allow quiet speech while filtering line static)
-		if isQuiet(samples, 0.003) {
+		// 2. VOLUME GATE (0.002 to allow soft speech while filtering silence)
+		if isQuiet(samples, 0.002) {
 			continue
 		}
 
@@ -50,18 +60,15 @@ func (c *AICortex) StartUnifiedAwareness() {
 			continue
 		}
 		text = strings.TrimSpace(text)
-		lowerText := strings.ToLower(text)
 		infoLog.Printf("VOICE_DETECTED: %q", text)
 
-		// ANTI-FEEDBACK: If the robot just finished talking, ignore the detection
-		// (PostSpeechCooldownSec — bound to AUDIO_POLICY.md rule 1.)
+		// Double-check anti-feedback
 		if time.Since(lastSpokeTime) < time.Duration(PostSpeechCooldownSec)*time.Second {
 			continue
 		}
 
 		// Check for wake words
-		if isWakeWord(text) || strings.Contains(lowerText, "pathfinder") ||
-			strings.Contains(lowerText, "computer") || strings.Contains(lowerText, "robot") {
+		if isWakeWord(text) {
 			atomic.StoreInt32(&commandBusy, 1)
 
 			// Visual indicator: Solid Blue for active listening
@@ -70,10 +77,10 @@ func (c *AICortex) StartUnifiedAwareness() {
 				_ = ttsEngine.SpeakCritical("yes")
 			}
 
-			// Small pause to let "Yes" finish playing and clearing from the air
-			time.Sleep(1000 * time.Millisecond)
+			// Wait for "Yes" to finish playing before recording command
+			waitForTTS()
 
-			go c.handleActiveConversation()
+			c.handleActiveConversation()
 		} else {
 			// Direct command execution in passive window (e.g. "move forward", "stop", "lights on")
 			level := LevelGuest
@@ -89,7 +96,6 @@ func (c *AICortex) StartUnifiedAwareness() {
 				_ = setLEDAll(1, LEDColorGreen)
 				time.Sleep(600 * time.Millisecond)
 				_ = setLEDAll(0, 0)
-				lastSpokeTime = time.Now()
 				atomic.StoreInt32(&commandBusy, 0)
 			}
 		}
@@ -143,7 +149,6 @@ func (c *AICortex) handleActiveConversation() {
 	}
 	if processDirectCommand(finalText, level, name) {
 		indicateSuccess()
-		lastSpokeTime = time.Now()
 		return
 	}
 
@@ -155,7 +160,6 @@ func (c *AICortex) handleActiveConversation() {
 	if err == nil && speech != "" {
 		indicateSuccess()
 		_ = speak(speech)
-		lastSpokeTime = time.Now()
 	} else if err != nil {
 		infoLog.Printf("CORTEX_AGENT_ERROR: %v", err)
 		indicateWarning()

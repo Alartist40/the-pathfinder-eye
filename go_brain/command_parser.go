@@ -16,11 +16,16 @@ var actionAliases = map[string]string{
 	// move/turn variants
 	"go": "move", "move": "move", "forward": "move", "back": "move",
 	"backward": "move", "backwards": "move", "turn": "move", "left": "move",
-	"right": "move", "spin": "move",
+	"right": "move", "spin": "move", "drive": "move", "rotate": "move",
+	// stop variants
+	"stop": "stop", "halt": "stop", "freeze": "stop", "brake": "stop",
 	// look/scan/view variants
 	"look": "look", "scan": "look", "see": "look", "view": "look", "gaze": "look",
+	"tilt": "look", "pan": "look", "camera": "look",
+	// light variants
+	"light": "light", "lights": "light", "headlight": "light", "headlights": "light", "lamp": "light",
 	// play/audio variants
-	"play": "play", "song": "play", "music": "play", "audio": "play", "sound": "play",
+	"play": "play", "song": "play", "music": "play", "audio": "play", "sound": "play", "sing": "play",
 	// read/recite variants
 	"read": "read", "recite": "read", "say": "read", "tell": "read",
 	"instructions": "read", "instruction": "read",
@@ -28,8 +33,11 @@ var actionAliases = map[string]string{
 	"activate": "activate", "enable": "activate", "start": "activate",
 	"enter": "activate", "mode": "activate", "initiate": "activate",
 	// deactivate/disable variants
-	"deactivate": "deactivate", "disable": "deactivate", "stop": "deactivate",
+	"deactivate": "deactivate", "disable": "deactivate",
 	"exit": "deactivate", "sleep": "deactivate",
+	// status & help
+	"status": "status", "health": "status", "stats": "status",
+	"help": "help", "commands": "help",
 	// diagnostic
 	"test": "test", "diagnostic": "test", "check": "test", "run": "test",
 	// translation
@@ -48,21 +56,24 @@ var targetAliases = map[string]string{
 	"bird": "birdwatch", "bired": "birdwatch", "beard": "birdwatch",
 	"word": "birdwatch", "third": "birdwatch",
 	// movement directions
-	"forward": "forward", "ahead": "forward", "straight": "forward",
-	"back": "backward", "backward": "backward", "backwards": "backward",
-	"left": "left", "turn left": "left",
-	"right": "right", "turn right": "right",
+	"forward": "forward", "ahead": "forward", "straight": "forward", "front": "forward",
+	"back": "backward", "backward": "backward", "backwards": "backward", "reverse": "backward",
+	"left": "left", "turn left": "left", "strafe left": "left",
+	"right": "right", "turn right": "right", "strafe right": "right",
+	"stop": "stop",
 	// look targets
 	"up":     "up",
 	"down":   "down",
 	"center": "center", "middle": "center",
 	"look left":  "left",
 	"look right": "right",
+	// light targets
+	"on": "on", "off": "off", "white": "white", "red": "red", "green": "green", "blue": "blue", "yellow": "yellow", "strobe": "strobe",
 	// documents
-	"law": "law", "pathfinder law": "law", "adventurer law": "law",
-	"pledge": "pledge", "pathfinder pledge": "pledge", "adventurer pledge": "pledge",
-	"aim": "aim", "pathfinder aim": "aim", "adventurer aim": "aim",
-	"motto": "motto", "pathfinder motto": "motto", "adventurer motto": "motto",
+	"law": "law", "pathfinder law": "law", "adventurer law": "adventurer_law",
+	"pledge": "pledge", "pathfinder pledge": "pledge", "adventurer pledge": "adventurer_pledge",
+	"aim": "aim", "pathfinder aim": "aim", "adventurer aim": "adventurer_aim",
+	"motto": "motto", "pathfinder motto": "motto", "adventurer motto": "adventurer_motto",
 	// songs
 	"pathfinder song": "pathfinder_song", "pathfinder soundtrack": "pathfinder_song",
 	"adventurer song": "adventurer_song", "adventurer soundtrack": "adventurer_song",
@@ -76,7 +87,7 @@ var targetAliases = map[string]string{
 	"japanese": "japanese", "japan": "japanese",
 	"remote control": "remote",
 	"deep thought":   "deep", "thinking mode": "deep",
-	"about turn": "about_turn", "turn about": "about_turn",
+	"about turn": "about_turn", "turn about": "about_turn", "turn around": "about_turn", "u turn": "about_turn",
 }
 
 // ExtractCommand parses STT output into a structured command.
@@ -85,6 +96,50 @@ func ExtractCommand(text string) ParsedCommand {
 	cmd := ParsedCommand{Modifiers: make(map[string]string)}
 	lower := strings.ToLower(text)
 	tokens := tokenize(lower)
+
+	// Direct phrase checks
+	if strings.Contains(lower, "turn around") || strings.Contains(lower, "about turn") || strings.Contains(lower, "turn about") {
+		return ParsedCommand{Action: "move", Target: "about_turn", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "stop") || strings.Contains(lower, "halt") || strings.Contains(lower, "freeze") {
+		return ParsedCommand{Action: "stop", Target: "stop", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "help") || strings.Contains(lower, "what can you do") || strings.Contains(lower, "commands") {
+		return ParsedCommand{Action: "help", Target: "help", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "status") || strings.Contains(lower, "how are you") || strings.Contains(lower, "system health") {
+		return ParsedCommand{Action: "status", Target: "status", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "lights on") || strings.Contains(lower, "turn on lights") || strings.Contains(lower, "headlights on") {
+		return ParsedCommand{Action: "light", Target: "on", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "lights off") || strings.Contains(lower, "turn off lights") || strings.Contains(lower, "headlights off") {
+		return ParsedCommand{Action: "light", Target: "off", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "lights red") || strings.Contains(lower, "red light") {
+		return ParsedCommand{Action: "light", Target: "red", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "lights green") || strings.Contains(lower, "green light") {
+		return ParsedCommand{Action: "light", Target: "green", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "lights blue") || strings.Contains(lower, "blue light") {
+		return ParsedCommand{Action: "light", Target: "blue", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "lights yellow") || strings.Contains(lower, "yellow light") {
+		return ParsedCommand{Action: "light", Target: "yellow", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "pathfinder law") || strings.Contains(lower, "read law") || strings.Contains(lower, "the law") {
+		return ParsedCommand{Action: "read", Target: "law", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "pathfinder pledge") || strings.Contains(lower, "read pledge") || strings.Contains(lower, "the pledge") {
+		return ParsedCommand{Action: "read", Target: "pledge", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "pathfinder aim") || strings.Contains(lower, "read aim") || strings.Contains(lower, "the aim") {
+		return ParsedCommand{Action: "read", Target: "aim", Modifiers: map[string]string{}}
+	}
+	if strings.Contains(lower, "pathfinder motto") || strings.Contains(lower, "read motto") || strings.Contains(lower, "the motto") {
+		return ParsedCommand{Action: "read", Target: "motto", Modifiers: map[string]string{}}
+	}
 
 	// 1. Detect canonical action from first token or keyword match.
 	if len(tokens) > 0 {

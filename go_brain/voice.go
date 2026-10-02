@@ -282,9 +282,32 @@ func (t *TTSEngine) executeSpeak(text string, critical bool) error {
 	t.mu.Lock()
 	t.currentTTS = nil
 	t.isCritical = false
+	lastSpokeTime = time.Now()
 	t.mu.Unlock()
 
 	return nil
+}
+
+func (t *TTSEngine) isSpeaking() bool {
+	if t == nil {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.currentTTS != nil || t.isCritical || len(ttsQueue) > 0
+}
+
+func waitForTTS() {
+	if ttsEngine == nil {
+		return
+	}
+	for i := 0; i < 60; i++ {
+		if !ttsEngine.isSpeaking() {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(200 * time.Millisecond)
 }
 
 func (t *TTSEngine) Speak(text string) error {

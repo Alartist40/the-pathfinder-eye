@@ -32,20 +32,22 @@ func titleCase(s string) string {
 	return strings.ToUpper(s[:1]) + strings.ToLower(s[1:])
 }
 
-// wakeWords are STT variants of the wake word "instruction".
-// These are common misrecognitions from the speech-to-text engine.
-// Each is matched as a whole word only to avoid false positives.
+// wakeWords are STT variants of wake words.
 var wakeWords = map[string]bool{
+	"hey": true, "hi": true, "hello": true, "yo": true,
+	"ok": true, "okay": true,
 	"instruction": true, "instruct": true,
 	"destruction": true, "restruction": true,
 	"pathfinder": true, "robot": true,
 	"computer": true, "eye": true,
+	"listen": true, "wake": true,
 }
 
 func isWakeWord(text string) bool {
 	t := strings.ToLower(strings.TrimSpace(text))
-	if strings.Contains(t, "hey pathfinder") || strings.Contains(t, "pathfinder eye") ||
-		strings.Contains(t, "hey robot") || strings.Contains(t, "hey computer") {
+	if strings.Contains(t, "hey") || strings.Contains(t, "hi") || strings.Contains(t, "hello") ||
+		strings.Contains(t, "pathfinder") || strings.Contains(t, "computer") || strings.Contains(t, "robot") ||
+		strings.Contains(t, "listen") {
 		return true
 	}
 	words := strings.Fields(t)
@@ -200,7 +202,7 @@ func dispatchAction(cmdParsed ParsedCommand, level AuthorityLevel, name string) 
 	switch cmdParsed.Action {
 	case "test":
 		if ttsEngine != nil {
-			_ = ttsEngine.SpeakCritical("understood")
+			_ = ttsEngine.SpeakCritical("understood. running hardware test.")
 		}
 		go handleFullHardwareTest_Direct()
 		return true
@@ -208,8 +210,20 @@ func dispatchAction(cmdParsed ParsedCommand, level AuthorityLevel, name string) 
 	case "move":
 		return handleMoveAction(cmdParsed)
 
+	case "stop":
+		return handleExitCommand()
+
 	case "look":
 		return handleLookAction(cmdParsed)
+
+	case "light":
+		return handleLightAction(cmdParsed)
+
+	case "status":
+		return handleStatusAction()
+
+	case "help":
+		return handleHelpAction()
 
 	case "play":
 		return handlePlayAction(cmdParsed)
@@ -260,10 +274,10 @@ func dispatchAction(cmdParsed ParsedCommand, level AuthorityLevel, name string) 
 	}
 }
 
-// handleExitCommand cleans up all active modes.
+// handleExitCommand cleans up all active modes and stops motors.
 func handleExitCommand() bool {
 	if ttsEngine != nil {
-		_ = ttsEngine.SpeakCritical("system idle.")
+		_ = ttsEngine.SpeakCritical("Stopping.")
 	}
 	stopAllMotors()
 	birdwatchActive = false
@@ -274,12 +288,10 @@ func handleExitCommand() bool {
 	if deepThoughtActive {
 		go exitDeepThought()
 	}
-	_ = exec.Command("sudo", "systemctl", "stop", "leafcutter.service").Run()
 	return true
 }
 
 // handleMoveAction executes movement commands (forward, backward, left, right, about_turn).
-// Motors are run in a background goroutine so the command loop is not blocked.
 func handleMoveAction(cmd ParsedCommand) bool {
 	speed := byte(150)
 	if sp, ok := cmd.Modifiers["speed"]; ok {
@@ -290,18 +302,27 @@ func handleMoveAction(cmd ParsedCommand) bool {
 	go func() {
 		switch cmd.Target {
 		case "forward":
+			if ttsEngine != nil {
+				_ = ttsEngine.Speak("Moving forward.")
+			}
 			for i := byte(0); i < 4; i++ {
 				_ = moveMotor(i, 0, speed)
 			}
 			time.Sleep(2 * time.Second)
 			stopAllMotors()
 		case "backward":
+			if ttsEngine != nil {
+				_ = ttsEngine.Speak("Moving backward.")
+			}
 			for i := byte(0); i < 4; i++ {
 				_ = moveMotor(i, 1, speed)
 			}
 			time.Sleep(2 * time.Second)
 			stopAllMotors()
 		case "left":
+			if ttsEngine != nil {
+				_ = ttsEngine.Speak("Turning left.")
+			}
 			_ = moveMotor(0, 1, speed)
 			_ = moveMotor(1, 0, speed)
 			_ = moveMotor(2, 0, speed)
@@ -309,6 +330,9 @@ func handleMoveAction(cmd ParsedCommand) bool {
 			time.Sleep(1 * time.Second)
 			stopAllMotors()
 		case "right":
+			if ttsEngine != nil {
+				_ = ttsEngine.Speak("Turning right.")
+			}
 			_ = moveMotor(0, 0, speed)
 			_ = moveMotor(1, 1, speed)
 			_ = moveMotor(2, 1, speed)
@@ -316,11 +340,24 @@ func handleMoveAction(cmd ParsedCommand) bool {
 			time.Sleep(1 * time.Second)
 			stopAllMotors()
 		case "about_turn":
+			if ttsEngine != nil {
+				_ = ttsEngine.Speak("Turning around.")
+			}
 			_ = moveMotor(0, 1, speed)
 			_ = moveMotor(1, 0, speed)
 			_ = moveMotor(2, 1, speed)
 			_ = moveMotor(3, 0, speed)
 			time.Sleep(1500 * time.Millisecond)
+			stopAllMotors()
+		default:
+			// Default move forward
+			if ttsEngine != nil {
+				_ = ttsEngine.Speak("Moving forward.")
+			}
+			for i := byte(0); i < 4; i++ {
+				_ = moveMotor(i, 0, speed)
+			}
+			time.Sleep(2 * time.Second)
 			stopAllMotors()
 		}
 	}()
@@ -331,18 +368,93 @@ func handleMoveAction(cmd ParsedCommand) bool {
 func handleLookAction(cmd ParsedCommand) bool {
 	switch cmd.Target {
 	case "up":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Looking up.")
+		}
 		_ = setServo(2, 170)
 	case "down":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Looking down.")
+		}
 		_ = setServo(2, 30)
 	case "left":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Looking left.")
+		}
 		_ = setServo(1, 150)
 	case "right":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Looking right.")
+		}
 		_ = setServo(1, 30)
 	case "center":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Centering camera.")
+		}
 		_ = setServo(1, 90)
 		_ = setServo(2, 75)
 	default:
 		return false
+	}
+	return true
+}
+
+// handleLightAction controls RGB headlights.
+func handleLightAction(cmd ParsedCommand) bool {
+	switch cmd.Target {
+	case "on", "white":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Headlights on.")
+		}
+		_ = setLEDAll(1, LEDColorBlue)
+	case "off":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Headlights off.")
+		}
+		_ = setLEDAll(0, 0)
+	case "red":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Lights red.")
+		}
+		_ = setLEDAll(1, LEDColorRed)
+	case "green":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Lights green.")
+		}
+		_ = setLEDAll(1, LEDColorGreen)
+	case "blue":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Lights blue.")
+		}
+		_ = setLEDAll(1, LEDColorBlue)
+	case "yellow":
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Lights yellow.")
+		}
+		_ = setLEDAll(1, LEDColorYellow)
+	default:
+		_ = setLEDAll(1, LEDColorBlue)
+	}
+	return true
+}
+
+// handleStatusAction provides spoken system telemetry.
+func handleStatusAction() bool {
+	stats := getSystemStats()
+	ram := stats["ram_used"]
+	temp := stats["temp"]
+	msg := fmt.Sprintf("System online. Memory in use: %v. CPU temperature: %v.", ram, temp)
+	if ttsEngine != nil {
+		_ = ttsEngine.Speak(msg)
+	}
+	return true
+}
+
+// handleHelpAction lists available categories of commands.
+func handleHelpAction() bool {
+	helpMsg := "You can tell me to move forward, turn around, stop, look up or down, change headlight colors, read the Pathfinder Law, play songs, or ask me any question."
+	if ttsEngine != nil {
+		_ = ttsEngine.Speak(helpMsg)
 	}
 	return true
 }
