@@ -38,10 +38,16 @@ func titleCase(s string) string {
 var wakeWords = map[string]bool{
 	"instruction": true, "instruct": true,
 	"destruction": true, "restruction": true,
+	"pathfinder": true, "robot": true,
+	"computer": true, "eye": true,
 }
 
 func isWakeWord(text string) bool {
 	t := strings.ToLower(strings.TrimSpace(text))
+	if strings.Contains(t, "hey pathfinder") || strings.Contains(t, "pathfinder eye") ||
+		strings.Contains(t, "hey robot") || strings.Contains(t, "hey computer") {
+		return true
+	}
 	words := strings.Fields(t)
 	for _, word := range words {
 		word = strings.Trim(word, ".,!?;:'\"-()[]{}")

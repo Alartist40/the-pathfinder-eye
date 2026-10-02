@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -141,20 +142,24 @@ func indicateWakeWord() {
 func indicateSleep() { _ = setLEDAll(0, 0) }
 
 func indicateStartup() {
-	colors := []byte{LEDColorRed, LEDColorGreen, LEDColorBlue, LEDColorYellow}
+	colors := []byte{LEDColorRed, LEDColorYellow, LEDColorBlue, LEDColorGreen}
 	for _, c := range colors {
 		_ = setLEDAll(1, c)
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(150 * time.Millisecond)
 	}
+	_ = setLEDAll(1, LEDColorGreen)
+	time.Sleep(300 * time.Millisecond)
 	_ = setLEDAll(0, 0)
 }
 
 func startListeningHeartbeat() {
-	ticker := time.NewTicker(15 * time.Second)
+	ticker := time.NewTicker(3 * time.Second)
 	for range ticker.C {
-		_ = setLEDAlone(1, 1, LEDColorGreen)
-		time.Sleep(80 * time.Millisecond)
-		_ = setLEDAlone(1, 0, 0)
+		if atomic.LoadInt32(&commandBusy) == 0 {
+			_ = setLEDAlone(1, 1, LEDColorGreen)
+			time.Sleep(80 * time.Millisecond)
+			_ = setLEDAlone(1, 0, 0)
+		}
 	}
 }
 
@@ -297,18 +302,14 @@ func main() {
 	// Audio setup and startup announcement
 	go func() {
 		startupOnce.Do(func() {
-			_ = exec.Command("/home/pi/the-pathfinder-eye_ai/scripts/set_audio.sh").Run()
-			time.Sleep(1 * time.Second)
-			if ttsEngine != nil {
-				_ = ttsEngine.SpeakCritical("Pathfinder Eye online")
-				time.Sleep(500 * time.Millisecond)
-				_ = ttsEngine.SpeakCritical("Motors and servos ready")
-				time.Sleep(500 * time.Millisecond)
-				_ = ttsEngine.SpeakCritical("Say Instruction to begin")
-				time.Sleep(500 * time.Millisecond)
-				_ = ttsEngine.SpeakCritical("Ready")
-			}
 			go indicateStartup()
+			_ = exec.Command("/home/pi/the-pathfinder-eye_ai/scripts/set_audio.sh").Run()
+			time.Sleep(500 * time.Millisecond)
+			if ttsEngine != nil {
+				_ = ttsEngine.SpeakCritical("Pathfinder Eye online. All systems nominal. Speech recognition, motor control, and AI systems ready. Say Hey Pathfinder to begin.")
+			}
+			time.Sleep(500 * time.Millisecond)
+			indicateReady()
 		})
 	}()
 

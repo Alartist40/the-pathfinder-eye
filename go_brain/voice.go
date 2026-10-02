@@ -74,15 +74,28 @@ func initVoice(modelPath string) error {
 	return nil
 }
 
-var preferredMicDevice string
+var (
+	preferredMicDevice     string
+	preferredSpeakerDevice string
+)
+
+func candidateAudioDevices(preferred string) []string {
+	base := []string{"default", "plughw:1,0", "plughw:2,0", "plughw:0,0", "plughw:3,0", "hw:1,0", "hw:2,0", "hw:0,0"}
+	if preferred == "" {
+		return base
+	}
+	res := []string{preferred}
+	for _, d := range base {
+		if d != preferred {
+			res = append(res, d)
+		}
+	}
+	return res
+}
 
 func captureAudio(durationSeconds int) ([]float32, error) {
 	tempFile := "/tmp/capture.wav"
-	devices := []string{"plughw:0,0", "plughw:1,0", "plughw:0,0", "default"}
-
-	if preferredMicDevice != "" {
-		devices = append([]string{preferredMicDevice}, devices...)
-	}
+	devices := candidateAudioDevices(preferredMicDevice)
 
 	for _, dev := range devices {
 		_ = os.Remove(tempFile)
@@ -91,11 +104,25 @@ func captureAudio(durationSeconds int) ([]float32, error) {
 
 		if err := cmd.Run(); err == nil {
 			if fi, err := os.Stat(tempFile); err == nil && fi.Size() > 1024 {
-				preferredMicDevice = dev
-				return readWavSamples(tempFile)
+				samples, err := readWavSamples(tempFile)
+				if err == nil && len(samples) > 0 {
+					preferredMicDevice = dev
+					return samples, nil
+				}
 			}
 		}
 	}
+
+	// Fallback without -D flag if all explicit devices fail
+	_ = os.Remove(tempFile)
+	cmd := exec.Command("arecord", "-d", fmt.Sprintf("%d", durationSeconds),
+		"-f", "S16_LE", "-r", "16000", "-c", "1", tempFile)
+	if err := cmd.Run(); err == nil {
+		if fi, err := os.Stat(tempFile); err == nil && fi.Size() > 1024 {
+			return readWavSamples(tempFile)
+		}
+	}
+
 	return nil, fmt.Errorf("no working mic")
 }
 
@@ -155,7 +182,7 @@ func translateJapaneseToEnglish(samples []float32) (string, error) {
 }
 
 func initTTS() (*TTSEngine, error) {
-	engine := &TTSEngine{Device: "plughw:0,0", Speed: 1.0, Volume: 170}
+	engine := &TTSEngine{Device: "default", Speed: 1.0, Volume: 170}
 	ttsQueue = make(chan ttsMessage, 10)
 	go ttsWorker(engine)
 	return engine, nil
@@ -201,7 +228,7 @@ func (t *TTSEngine) executeSpeak(text string, critical bool) error {
 	// Try Pocket-TTS service first
 	pocketURL := "http://localhost:8020/tts"
 	payload, _ := json.Marshal(map[string]string{"text": text})
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: 3 * time.Second}
 
 	resp, err := client.Post(pocketURL, "application/json", bytes.NewReader(payload))
 	if err == nil && resp.StatusCode == 200 {
@@ -218,12 +245,39 @@ func (t *TTSEngine) executeSpeak(text string, critical bool) error {
 		_ = espeakCmd.Run()
 	}
 
-	playCmd := exec.Command("aplay", "-D", t.Device, wavPath)
-	t.mu.Lock()
-	t.currentTTS = playCmd
-	t.mu.Unlock()
+	// Play via candidate audio devices
+	devices := candidateAudioDevices(preferredSpeakerDevice)
+	played := false
 
-	_ = playCmd.Run()
+	for _, dev := range devices {
+		playCmd := exec.Command("aplay", "-D", dev, wavPath)
+		t.mu.Lock()
+		t.currentTTS = playCmd
+		t.mu.Unlock()
+
+		if err := playCmd.Run(); err == nil {
+			preferredSpeakerDevice = dev
+			t.Device = dev
+			played = true
+			break
+		}
+	}
+
+	// Bare aplay fallback if explicit devices failed
+	if !played {
+		playCmd := exec.Command("aplay", wavPath)
+		t.mu.Lock()
+		t.currentTTS = playCmd
+		t.mu.Unlock()
+		if err := playCmd.Run(); err == nil {
+			played = true
+		}
+	}
+
+	// Final direct espeak-ng speech fallback if aplay failed completely
+	if !played {
+		_ = exec.Command("espeak-ng", text).Run()
+	}
 
 	t.mu.Lock()
 	t.currentTTS = nil
