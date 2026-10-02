@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -131,11 +130,24 @@ func handleCommandSequence() {
 // for open conversation. Returns true if command was handled, false if
 // unrecognized.
 func processDirectCommand(cmd string, level AuthorityLevel, name string) bool {
-	// Immediate exit/stop/sleep keywords
 	lower := strings.ToLower(cmd)
+
+	// Immediate exit/stop/sleep keywords
 	if strings.Contains(lower, "exit") || strings.Contains(lower, "shut down") ||
-		(lower == "stop") || (lower == "sleep") || (lower == "stop now") {
+		(lower == "stop") || (lower == "sleep") || (lower == "stop now") || (lower == "halt") {
 		return handleExitCommand()
+	}
+
+	// AI Mode explicit trigger
+	if strings.Contains(lower, "ai mode") || strings.Contains(lower, "chat mode") ||
+		strings.Contains(lower, "conversation mode") || strings.Contains(lower, "start ai") ||
+		strings.Contains(lower, "activate ai") || strings.Contains(lower, "talk to me") {
+		if ttsEngine != nil {
+			_ = ttsEngine.SpeakCritical("AI mode active. I am listening. Say exit to return.")
+		}
+		aiActive = true
+		go startAIConversationLoop(name)
+		return true
 	}
 
 	// Tier 1: Fast Needle 2 classifier & tool calling (confidence >= 0.5)
@@ -151,17 +163,11 @@ func processDirectCommand(cmd string, level AuthorityLevel, name string) bool {
 		return true
 	}
 
-	// Tier 3: Leafcutter LLM fallback for open reasoning/conversation
-	if aiBrain != nil {
-		worldCtx := GetWorldStatePrompt()
-		speech, err := aiBrain.Process(cmd, worldCtx)
-		if err == nil && speech != "" {
-			_ = speak(speech)
-			return true
-		}
+	// Unrecognized command: do NOT invoke LLM to preserve battery and CPU
+	if ttsEngine != nil {
+		_ = ttsEngine.Speak("Command not recognized. Say help for commands, or say AI mode to chat.")
 	}
-
-	return false
+	return true
 }
 
 // dispatchAction runs the action+target handlers. Returns true if the
@@ -459,16 +465,27 @@ func handleHelpAction() bool {
 	return true
 }
 
-// handlePlayAction plays audio (pathfinder/adventurer songs).
+// handlePlayAction plays audio or recites song lyrics.
 func handlePlayAction(cmd ParsedCommand) bool {
 	file := "Pathfinder Song.mp3"
+	songLyrics := "Oh, we are the Pathfinders strong, The servants of God are we. Faithful as we march along, In kindness, truth, and purity. A message to tell to the world, A truth that will set us free! King Jesus the Savior's coming back for you and me!"
+
 	if cmd.Target == "adventurer_song" || strings.Contains(cmd.Target, "adventurer") {
 		file = "Adventurer Song.mp3"
+		songLyrics = "We are Adventurers, At home, at school, at play. We are Adventurers, We're learning every day! To be honest, kind, and true, To be like Jesus through and through. We are Adventurers!"
 	}
-	go func() {
-		exec.Command("mpg123", "/home/pi/the-pathfinder-eye_ai/resources/"+file).Run()
-		lastSpokeTime = time.Now()
-	}()
+
+	fullPath := "/home/pi/the-pathfinder-eye_ai/resources/" + file
+	fi, err := os.Stat(fullPath)
+	if err == nil && fi.Size() > 1000 {
+		go func() {
+			_ = exec.Command("mpg123", fullPath).Run()
+		}()
+	} else {
+		if ttsEngine != nil {
+			_ = ttsEngine.SpeakCritical(songLyrics)
+		}
+	}
 	return true
 }
 
@@ -683,24 +700,28 @@ func startAIConversationLoop(userName string) {
 }
 
 func readDocument(path string) {
-	file, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
+		if ttsEngine != nil {
+			_ = ttsEngine.Speak("Document not found.")
+		}
 		return
 	}
-	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+	lines := strings.Split(string(data), "\n")
+	var textLines []string
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if l == "" || strings.HasPrefix(l, "#") {
 			continue
 		}
-		if ttsEngine != nil {
-			_ = ttsEngine.Speak(line)
-			time.Sleep(2 * time.Second)
-		}
+		textLines = append(textLines, l)
 	}
-	lastSpokeTime = time.Now()
+
+	fullText := strings.Join(textLines, " ")
+	if fullText != "" && ttsEngine != nil {
+		_ = ttsEngine.SpeakCritical(fullText)
+	}
 }
 
 func startJapaneseTranslationLoop() {

@@ -3,8 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
-	"strings"
 	"sync"
 )
 
@@ -235,13 +233,8 @@ func initHardwareTools() *ToolRegistry {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
-			file := "Pathfinder Song.mp3"
-			if strings.Contains(a.Resource, "adventurer") {
-				file = "Adventurer Song.mp3"
-			}
-			go func() {
-				_ = exec.Command("mpg123", "/home/pi/the-pathfinder-eye_ai/resources/"+file).Run()
-			}()
+			cmd := ParsedCommand{Action: "play", Target: a.Resource}
+			handlePlayAction(cmd)
 			return "Playing " + a.Resource, nil
 		})
 

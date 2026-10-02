@@ -138,7 +138,7 @@ func (c *AICortex) handleActiveConversation() {
 	safeLogf("", "CORTEX: speech payload redacted: %s",
 		redactOnce(finalText))
 
-	// Try direct command dispatch first (offline, instant response)
+	// Try direct command dispatch (Needle 2 + Rule Parser)
 	level := LevelGuest
 	name := "Guest"
 	if sp, err := visionDB.GetCurrentSpeaker(); err == nil {
@@ -150,22 +150,6 @@ func (c *AICortex) handleActiveConversation() {
 	if processDirectCommand(finalText, level, name) {
 		indicateSuccess()
 		return
-	}
-
-	// Fall back to AI brain (local leafcutter LLM)
-	_ = setLEDAll(1, LEDColorYellow)
-	worldState := GetWorldStatePrompt()
-
-	speech, err := aiBrain.Process(finalText, worldState)
-	if err == nil && speech != "" {
-		indicateSuccess()
-		_ = speak(speech)
-	} else if err != nil {
-		infoLog.Printf("CORTEX_AGENT_ERROR: %v", err)
-		indicateWarning()
-		if ttsEngine != nil {
-			_ = ttsEngine.Speak("My neural link is struggling.")
-		}
 	}
 }
 
